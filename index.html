@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Name - Website</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Font (Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        /* Apply the Inter font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        /* Simple fade-in animation on load */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            /* Apply animation */
+            opacity: 0; /* Start hidden */
+            animation: fadeIn 1s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 antialiased">
+
+    <!-- Main Content -->
+    <main class="min-h-screen flex flex-col items-center justify-center p-6">
+        
+        <div class="text-center space-y-6 fade-in">
+            
+            <!-- Your Name -->
+            <h1 class="text-6xl md:text-8xl font-black text-white leading-tight">
+                Your Name
+            </h1>
+            
+            <!-- Subtitle -->
+            <p class="text-xl md:text-2xl text-indigo-300 font-medium">
+                Welcome to my website.
+            </p>
+            
+            <!-- Simple Message -->
+            <p class="text-lg text-gray-400 max-w-md">
+                This page is now live on GitHub Pages. More content will be coming soon!
+            </p>
+            
+            <!-- Social Link (e.g., GitHub) -->
+            <div class="pt-4">
+                <a href="https://github.com/your-username" 
+                   target="_blank" 
+                   rel="noopener noreferrer" 
+                   class="inline-flex items-center gap-2 text-gray-400 hover:text-indigo-400 transition-colors duration-300">
+                    <i data-lucide="github" class="w-6 h-6"></i>
+                    <span>Follow my work on GitHub</span>
+                </a>
+            </div>
+            
+        </div>
+    </main>
+
+    <!-- Script to initialize Lucide icons -->
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
