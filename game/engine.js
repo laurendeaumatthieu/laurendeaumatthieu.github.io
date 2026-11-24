@@ -55,7 +55,7 @@ async function open(table, k) { const id = await idOf(k); return table[id] ? dec
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 
 // ---- State ----
-const fresh = () => ({ keys: [], moments: [], places: [], known: [], labels: {}, guess: {}, ok: [], puzzles: [], solved: [], notes: "", pins: [], ending: null, seenIntro: false });
+const fresh = () => ({ keys: [], moments: [], places: [], known: [], labels: {}, guess: {}, ok: [], puzzles: [], solved: [], notes: "", pins: [], ending: null, finalOpen: false, seenIntro: false });
 let st = fresh(), scenes = {}, current = null, sel = { moment: null, place: null, people: new Set() };
 function save() { try { localStorage.setItem(SAVE, JSON.stringify(st)); } catch (e) { /* storage unavailable */ } }
 
@@ -72,6 +72,7 @@ async function unlockScene(k, quiet = false) {
 function applyUnlock(u = {}, quiet = false) {
   (u.moments || []).forEach(m => { if (!st.moments.includes(m)) st.moments.push(m); });
   (u.people || []).forEach(p => { if (!st.known.includes(p)) st.known.push(p); });
+  if (u.final) st.finalOpen = true;
   if (u.message && !quiet) { $("notice-text").replaceChildren(...[].concat(u.message).map(t => el("p", "", t))); $("notice").showModal(); }
   (u.places || []).forEach(p => { if (!st.places.some(q => q.id === p.id)) st.places.push(p); });
   (u.puzzles || []).forEach(p => { if (!st.puzzles.some(q => q.id === p.id)) st.puzzles.push(p); });
@@ -257,7 +258,16 @@ function showEnding() {
   e.lines.forEach(t => v.append(el("p", "line narr", t)));
 }
 
-function renderAll() { renderLantern(); renderList(); renderPeople(); renderNotebook(); renderPuzzles(); renderFinal(); }
+// Tabs appear once useful: puzzles after the first one is found, the ending once the story opens it
+function renderTabs() {
+  const show = { puzzles: st.puzzles.length > 0, final: st.finalOpen || !!st.ending };
+  for (const [t, on] of Object.entries(show)) {
+    $("tab-btn-" + t).hidden = !on;
+    if (!on && $("tab-" + t).classList.contains("on")) document.querySelector('.tabs button[data-tab="scenes"]').click();
+  }
+}
+
+function renderAll() { renderTabs(); renderLantern(); renderList(); renderPeople(); renderNotebook(); renderPuzzles(); renderFinal(); }
 
 // ---- Save menu ----
 $("export").onclick = () => {

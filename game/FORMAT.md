@@ -25,7 +25,8 @@ Each file is a list of scenes:
       "unlock": { "places": [{ "id": "lighthouse", "label": "Le phare" }], "puzzles": ["<pid>"] } }
 
 `unlock` (in a scene or a puzzle reward) may contain `places` (objects), `puzzles` (ids), `moments` (ids),
-`people` (numbers made selectable before they are met) and `message` (string or list of paragraphs, shown
+`people` (numbers made selectable before they are met), `final: true` (shows the ending tab; set it
+in the last chapter) and `message` (string or list of paragraphs, shown
 once in a dialog, e.g. at the end of a chapter).
 
 Rules checked by the build: at most one scene per (moment, place); speakers are present people or 0;
