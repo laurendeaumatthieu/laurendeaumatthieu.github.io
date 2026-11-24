@@ -61,27 +61,39 @@ def main(story_dir: str, out: str):
             assert p in who, f"{s['id']}: person {p} missing from meta.who"
         for sp, _ in s["lines"]:
             assert sp == 0 or sp in s["people"], f"{s['id']}: speaker {sp} not present"
+        for m in s.get("unlock", {}).get("moments", []):
+            assert m in moments, f"{s['id']}: unknown unlocked moment {m}"
         for pid in s.get("unlock", {}).get("puzzles", []):
             assert pid in puzzles, f"{s['id']}: unknown puzzle {pid}"
 
-    # Reachability: a scene can be found once its place is available and all its people were met
-    # in an earlier reachable scene (puzzles are assumed solved once they appear)
-    reach, known, avail, opened = set(meta["start"]), set(), {p["id"] for p in meta["places"]}, set()
+    by_id = {s["id"]: s for s in scenes}
+    # Reachability: a scene can be found once its moment and place are available and all its people
+    # are known (met in a scene or unlocked); puzzles are assumed solved once they appear, and their
+    # rewards may unlock anything, including other puzzles
+    reach, known, opened = set(), set(), set()
+    avail = {p["id"] for p in meta["places"]}
+    moments_on = {m["id"] for m in meta["moments"] if not m.get("locked")}
+
+    def apply(u):
+        before = (len(known), len(avail), len(moments_on), len(opened))
+        known.update(u.get("people", [])); moments_on.update(u.get("moments", []))
+        avail.update(p["id"] for p in u.get("places", []))
+        for pid in u.get("puzzles", []):
+            if pid not in opened:
+                opened.add(pid); apply(puzzles[pid]["reward"].get("unlock", {}))
+        return before != (len(known), len(avail), len(moments_on), len(opened))
+
+    def enter(s):
+        reach.add(s["id"]); known.update(s["people"]); apply(s.get("unlock", {}))
+
+    for sid in meta["start"]:
+        enter(by_id[sid])
     changed = True
     while changed:
         changed = False
         for s in scenes:
-            if s["id"] not in reach and s["place"] in avail and set(s["people"]) <= known:
-                reach.add(s["id"]); changed = True
-        for sid in list(reach):
-            s = next(x for x in scenes if x["id"] == sid)
-            u = s.get("unlock", {})
-            new = set(s["people"]) - known | {p["id"] for p in u.get("places", [])} - avail
-            known |= set(s["people"]); avail |= {p["id"] for p in u.get("places", [])}
-            for pid in u.get("puzzles", []):
-                if pid not in opened:
-                    opened.add(pid); avail |= {p["id"] for p in puzzles[pid]["reward"].get("unlock", {}).get("places", [])}; changed = True
-            changed |= bool(new)
+            if s["id"] not in reach and s["moment"] in moments_on and s["place"] in avail and set(s["people"]) <= known:
+                enter(s); changed = True
     lost = [s["id"] for s in scenes if s["id"] not in reach]
     assert not lost, f"unreachable scenes: {lost}"
 
@@ -92,7 +104,6 @@ def main(story_dir: str, out: str):
                             for pid in u["puzzles"]]
         return u
 
-    by_id = {s["id"]: s for s in scenes}
     out_scenes, hints = {}, {}
     for s in scenes:
         k = scene_key(s)

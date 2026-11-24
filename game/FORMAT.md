@@ -8,7 +8,7 @@ The story source lives outside this public repository (private, spoilers). Build
 
 - `title`: game title shown in the header.
 - `intro`: list of paragraphs shown at the first visit (no spoilers).
-- `moments`: ordered timeline, `[{ "id": "mon-09", "label": "Lundi · 9 h" }]`. All visible from the start.
+- `moments`: ordered timeline, `[{ "id": "mon-09", "label": "Lundi · 9 h" }]`. Visible from the start unless `"locked": true` (then shown once unlocked).
 - `places`: places available from the start, `[{ "id": "port", "label": "Le port" }]`. Others come from `unlock`.
 - `cast`: identification list, `[{ "name": "…", "role": "…" }]`. Order is free.
 - `who`: secret mapping person number → index in `cast`, `{ "1": 4, "2": 0 }`. People appear as `#n` until identified (confirmed three at a time).
@@ -24,8 +24,13 @@ Each file is a list of scenes:
       "lines": [[1, "Dialogue line"], [0, "Narration (speaker 0)"]],
       "unlock": { "places": [{ "id": "lighthouse", "label": "Le phare" }], "puzzles": ["<pid>"] } }
 
+`unlock` (in a scene or a puzzle reward) may contain `places` (objects), `puzzles` (ids), `moments` (ids),
+`people` (numbers made selectable before they are met) and `message` (string or list of paragraphs, shown
+once in a dialog, e.g. at the end of a chapter).
+
 Rules checked by the build: at most one scene per (moment, place); speakers are present people or 0;
-every referenced moment, place, person and puzzle exists.
+every referenced moment, place, person and puzzle exists; every scene is reachable from the start
+(moment unlocked, place available, people known), following puzzle rewards, including nested ones.
 
 ## Keys
 

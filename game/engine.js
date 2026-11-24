@@ -25,27 +25,31 @@ async function open(table, k) { const id = await idOf(k); return table[id] ? dec
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 
 // ---- State ----
-const fresh = () => ({ keys: [], places: [], known: [], labels: {}, guess: {}, ok: [], puzzles: [], solved: [], notes: "", pins: [], ending: null, seenIntro: false });
+const fresh = () => ({ keys: [], moments: [], places: [], known: [], labels: {}, guess: {}, ok: [], puzzles: [], solved: [], notes: "", pins: [], ending: null, seenIntro: false });
 let st = fresh(), scenes = {}, current = null, sel = { moment: null, place: null, people: new Set() };
 function save() { try { localStorage.setItem(SAVE, JSON.stringify(st)); } catch (e) { /* storage unavailable */ } }
 
-async function unlockScene(k) {
+async function unlockScene(k, quiet = false) {
   const s = await open(S.scenes, k);
   if (!s) return null;
   if (!st.keys.includes(hex(k))) st.keys.push(hex(k));
   scenes[s.id] = s;
   s.people.forEach(p => { if (!st.known.includes(p)) st.known.push(p); });
-  applyUnlock(s.unlock);
+  applyUnlock(s.unlock, quiet);
   return s;
 }
-function applyUnlock(u = {}) {
+// Unlocks carry places, puzzles, moments (ids), people (numbers) and an optional message
+function applyUnlock(u = {}, quiet = false) {
+  (u.moments || []).forEach(m => { if (!st.moments.includes(m)) st.moments.push(m); });
+  (u.people || []).forEach(p => { if (!st.known.includes(p)) st.known.push(p); });
+  if (u.message && !quiet) { $("notice-text").replaceChildren(...[].concat(u.message).map(t => el("p", "", t))); $("notice").showModal(); }
   (u.places || []).forEach(p => { if (!st.places.some(q => q.id === p.id)) st.places.push(p); });
   (u.puzzles || []).forEach(p => { if (!st.puzzles.some(q => q.id === p.id)) st.puzzles.push(p); });
 }
 async function load(data) {
   st = Object.assign(fresh(), data); scenes = {};
-  for (const h of st.keys) await unlockScene(unhex(h));
-  for (const r of st.solved) applyUnlock(r.unlock);
+  for (const h of st.keys) await unlockScene(unhex(h), true);
+  for (const r of st.solved) applyUnlock(r.unlock, true);
 }
 
 // ---- Helpers (el and rand come from assets/puzzles.js) ----
@@ -62,7 +66,7 @@ function renderLantern() {
   const chips = (box, items, isOn, onClick) => box.replaceChildren(...items.map(([id, label]) => {
     const b = el("button", "chip" + (isOn(id) ? " on" : ""), label); b.onclick = () => onClick(id); return b;
   }));
-  chips($("moments"), S.moments.map(m => [m.id, m.label]), id => sel.moment === id, id => { sel.moment = sel.moment === id ? null : id; renderLantern(); });
+  chips($("moments"), S.moments.filter(m => !m.locked || st.moments.includes(m.id)).map(m => [m.id, m.label]), id => sel.moment === id, id => { sel.moment = sel.moment === id ? null : id; renderLantern(); });
   chips($("places"), allPlaces().map(p => [p.id, p.label]), id => sel.place === id, id => { sel.place = sel.place === id ? null : id; renderLantern(); });
   chips($("people"), st.known.slice().sort((a, b) => a - b).map(p => [p, who(p)]), p => sel.people.has(p),
     p => { sel.people.has(p) ? sel.people.delete(p) : sel.people.add(p); renderLantern(); });
@@ -246,7 +250,7 @@ document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
 });
 $("light").onclick = light;
 
-async function newGame() { for (const h of S.start) await unlockScene(unhex(h)); save(); }
+async function newGame() { for (const h of S.start) await unlockScene(unhex(h), true); save(); }
 
 (async () => {
   document.title = S.title; $("title").textContent = S.title;
