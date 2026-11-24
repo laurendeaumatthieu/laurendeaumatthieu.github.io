@@ -1,92 +1,71 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Matthieu Laurendeau</title>
-  <meta name="description" content="Matthieu Laurendeau: medical imaging, GPU computing and puzzles.">
+  <title>La lanterne</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0b0d'/><text x='16' y='22' font-family='monospace' font-size='15' font-weight='700' fill='%23e5383b' text-anchor='middle'>24</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="game/game.css">
 </head>
-<body>
+<body class="game">
   <header class="nav">
-    <a class="logo" href="#top"><span class="red">M</span><span class="gold">L</span></a>
-    <nav>
-      <a href="#about" data-i18n="nav.about">About</a>
-      <a href="#puzzles" data-i18n="nav.puzzles">Puzzles</a>
-      <a href="#projects" data-i18n="nav.projects">Projects</a>
-      <a href="#contact" data-i18n="nav.contact">Contact</a>
-    </nav>
+    <h1 id="title" class="logo"></h1>
     <div class="nav-actions">
-      <button id="lang" class="chip" aria-label="Switch language">FR</button>
+      <button class="chip" id="export" title="Télécharger la sauvegarde">Exporter</button>
+      <label class="chip" title="Charger une sauvegarde">Importer<input type="file" id="import" accept="application/json" hidden></label>
+      <button class="chip" id="reset">Recommencer</button>
+      <a class="chip" href="about.html">Auteur</a>
     </div>
   </header>
 
-  <main id="top">
-    <section class="hero">
-      <div class="tiles" id="tiles" aria-hidden="true"></div>
-      <div class="hero-text">
-        <p class="mono gold" data-i18n="hero.hello">Hello, I am</p>
-        <h1>Matthieu <span class="red">Laurendeau</span></h1>
-        <p class="lead" data-i18n="hero.lead"></p>
-        <div class="hero-cta">
-          <a class="btn" href="#puzzles" data-i18n="hero.play">Play a puzzle</a>
-          <a class="btn ghost" href="#projects" data-i18n="hero.projects">See projects</a>
-        </div>
-      </div>
+  <main class="layout">
+    <section class="panel lantern">
+      <h3>La lanterne</h3>
+      <h4>Moment</h4><div id="moments" class="chips"></div>
+      <h4>Lieu</h4><div id="places" class="chips"></div>
+      <h4>Personnes présentes</h4><div id="people" class="chips"></div>
+      <button class="btn" id="light">Allumer la lanterne</button>
+      <p id="msg" class="msg"></p>
     </section>
 
-    <section id="about" class="section">
-      <h2><span class="mono red">01</span> <span data-i18n="about.title">About</span></h2>
-      <p data-i18n="about.p1"></p>
-      <p data-i18n="about.p2"></p>
-      <ul class="tags">
-        <li>Python</li><li>CUDA</li><li>C++</li><li>CT reconstruction</li><li>RTK / ITK</li><li>HPC</li>
-      </ul>
-    </section>
+    <section class="panel reader" id="scene"></section>
 
-    <section id="puzzles" class="section">
-      <h2><span class="mono red">02</span> <span data-i18n="puzzles.title">Puzzles</span></h2>
-      <p data-i18n="puzzles.intro"></p>
-      <div class="grid" id="puzzle-grid"></div>
-    </section>
-
-    <section id="projects" class="section">
-      <h2><span class="mono red">03</span> <span data-i18n="projects.title">Projects</span></h2>
-      <p data-i18n="projects.intro"></p>
-      <div class="grid" id="project-grid"><p class="muted" data-i18n="projects.loading">Loading…</p></div>
-    </section>
-
-    <section id="contact" class="section">
-      <h2><span class="mono red">04</span> <span data-i18n="contact.title">Contact</span></h2>
-      <div class="links">
-        <a class="card link" href="https://github.com/laurendeaumatthieu" target="_blank" rel="noopener">GitHub <span class="mono muted">@laurendeaumatthieu</span></a>
-        <a class="card link" href="https://www.linkedin.com/in/laurendeaumatthieu" target="_blank" rel="noopener">LinkedIn <span class="mono muted">in/laurendeaumatthieu</span></a>
-      </div>
+    <section class="panel side">
+      <nav class="tabs">
+        <button class="on" data-tab="scenes">Scènes</button>
+        <button data-tab="people">Personnes</button>
+        <button data-tab="notes">Carnet</button>
+        <button data-tab="search">Chercher</button>
+        <button data-tab="puzzles">Énigmes</button>
+        <button data-tab="final">Dénouement</button>
+      </nav>
+      <div class="tab on" id="tab-scenes"></div>
+      <div class="tab" id="tab-people"></div>
+      <div class="tab" id="tab-notes"></div>
+      <div class="tab" id="tab-search"></div>
+      <div class="tab" id="tab-puzzles"></div>
+      <div class="tab" id="tab-final"></div>
     </section>
   </main>
 
-  <footer class="mono muted">© <span id="year"></span> Matthieu Laurendeau · <span data-i18n="footer"></span></footer>
-
-  <dialog id="modal">
-    <div class="modal-head">
-      <h3 id="modal-title"></h3>
-      <button class="chip" id="modal-close" aria-label="Close">✕</button>
-    </div>
-    <p id="modal-rules" class="muted"></p>
-    <div id="game"></div>
-    <div class="modal-foot">
-      <span id="status" class="mono gold"></span>
-      <button class="btn ghost" id="new-game" data-i18n="game.new">New game</button>
-    </div>
+  <dialog id="intro">
+    <div id="intro-text"></div>
+    <form method="dialog"><button class="btn">Commencer</button></form>
   </dialog>
 
-  <canvas id="confetti" aria-hidden="true"></canvas>
+  <dialog id="minigame">
+    <div class="modal-head"><h3 id="mg-title"></h3><form method="dialog"><button class="chip">✕</button></form></div>
+    <div id="mg-board"></div>
+    <p id="mg-status" class="mono gold"></p>
+  </dialog>
 
   <script src="assets/i18n.js"></script>
+  <script>lang = "fr";</script>
   <script src="assets/puzzles.js"></script>
-  <script src="assets/main.js"></script>
+  <script src="game/story.js"></script>
+  <script src="game/engine.js"></script>
 </body>
 </html>
