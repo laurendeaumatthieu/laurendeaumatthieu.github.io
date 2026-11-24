@@ -2,7 +2,7 @@
 const I18N = {
   en: {
     "puzzles.title": "Puzzles", "puzzles.intro": "Seven small puzzles, all made for this page. Pick one and take a break.",
-    "footer": "Zero trackers.",
+    "footer": "Zero trackers.", "nav.game": "Back to the game",
     "game.new": "New game", "game.solved": "Solved! ✦", "game.moves": "Moves",
     "p24.name": "Make 24", "p24.desc": "Four numbers, one target.",
     "p24.rules": "Combine the four numbers with + − × ÷ to reach exactly 24. Pick a number, an operator, then another number.",
@@ -23,7 +23,7 @@ const I18N = {
   },
   fr: {
     "puzzles.title": "Puzzles", "puzzles.intro": "Sept petits puzzles, tous créés pour cette page. Choisissez-en un et faites une pause.",
-    "footer": "Zéro traceur.",
+    "footer": "Zéro traceur.", "nav.game": "Retour au jeu",
     "game.new": "Nouvelle partie", "game.solved": "Résolu ! ✦", "game.moves": "Coups",
     "p24.name": "Faire 24", "p24.desc": "Quatre nombres, une cible.",
     "p24.rules": "Combinez les quatre nombres avec + − × ÷ pour obtenir exactement 24. Choisissez un nombre, un opérateur, puis un autre nombre.",
