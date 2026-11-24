@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Matthieu Laurendeau</title>
-  <meta name="description" content="Matthieu Laurendeau: medical imaging, GPU computing and puzzles.">
+  <meta name="description" content="Original browser puzzles by Matthieu Laurendeau.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0b0d'/><text x='16' y='22' font-family='monospace' font-size='14' font-weight='700' text-anchor='middle'><tspan fill='%23e5383b'>M</tspan><tspan fill='%23d4a24c'>L</tspan></text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -12,60 +12,22 @@
 </head>
 <body>
   <header class="nav">
-    <a class="logo" href="#top"><span class="red">M</span><span class="gold">L</span></a>
-    <nav>
-      <a href="#about" data-i18n="nav.about">About</a>
-      <a href="#puzzles" data-i18n="nav.puzzles">Puzzles</a>
-      <a href="#projects" data-i18n="nav.projects">Projects</a>
-      <a href="#contact" data-i18n="nav.contact">Contact</a>
-    </nav>
+    <a class="logo" href="#puzzles"><span class="red">M</span><span class="gold">L</span></a>
     <div class="nav-actions">
       <button id="lang" class="chip" aria-label="Switch language">FR</button>
     </div>
   </header>
 
   <main id="top">
-    <section class="hero">
-      <div class="tiles" id="tiles" aria-hidden="true"></div>
-      <div class="hero-text">
-        <p class="mono gold" data-i18n="hero.hello">Hello, I am</p>
-        <h1>Matthieu <span class="red">Laurendeau</span></h1>
-        <p class="lead" data-i18n="hero.lead"></p>
-        <div class="hero-cta">
-          <a class="btn" href="#puzzles" data-i18n="hero.play">Play a puzzle</a>
-          <a class="btn ghost" href="#projects" data-i18n="hero.projects">See projects</a>
-        </div>
-      </div>
-    </section>
 
-    <section id="about" class="section">
-      <h2><span class="mono red">01</span> <span data-i18n="about.title">About</span></h2>
-      <p data-i18n="about.p1"></p>
-      <p data-i18n="about.p2"></p>
-      <ul class="tags">
-        <li>Python</li><li>CUDA</li><li>C++</li><li>CT reconstruction</li><li>RTK / ITK</li><li>HPC</li>
-      </ul>
-    </section>
 
     <section id="puzzles" class="section">
-      <h2><span class="mono red">02</span> <span data-i18n="puzzles.title">Puzzles</span></h2>
+      <h2 data-i18n="puzzles.title">Puzzles</h2>
       <p data-i18n="puzzles.intro"></p>
       <div class="grid" id="puzzle-grid"></div>
     </section>
 
-    <section id="projects" class="section">
-      <h2><span class="mono red">03</span> <span data-i18n="projects.title">Projects</span></h2>
-      <p data-i18n="projects.intro"></p>
-      <div class="grid" id="project-grid"><p class="muted" data-i18n="projects.loading">Loading…</p></div>
-    </section>
 
-    <section id="contact" class="section">
-      <h2><span class="mono red">04</span> <span data-i18n="contact.title">Contact</span></h2>
-      <div class="links">
-        <a class="card link" href="https://github.com/laurendeaumatthieu" target="_blank" rel="noopener">GitHub <span class="mono muted">@laurendeaumatthieu</span></a>
-        <a class="card link" href="https://www.linkedin.com/in/laurendeaumatthieu" target="_blank" rel="noopener">LinkedIn <span class="mono muted">in/laurendeaumatthieu</span></a>
-      </div>
-    </section>
   </main>
 
   <footer class="mono muted">© <span id="year"></span> Matthieu Laurendeau · <span data-i18n="footer"></span></footer>

@@ -30,7 +30,7 @@ a { color: inherit; text-decoration: none; }
 .nav nav { display: flex; gap: 22px; margin-left: auto; }
 .nav nav a { color: var(--muted); font-size: 14px; transition: color .2s; }
 .nav nav a:hover { color: var(--gold); }
-.nav-actions { display: flex; gap: 10px; align-items: center; }
+.nav-actions { display: flex; gap: 10px; align-items: center; margin-left: auto; }
 @media (max-width: 720px) { .nav nav { display: none; } .nav-actions { margin-left: auto; } }
 
 .btn, .chip {
@@ -44,30 +44,10 @@ a { color: inherit; text-decoration: none; }
 .chip { padding: 6px 12px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); font-family: "JetBrains Mono", monospace; }
 .chip:hover { border-color: var(--gold); }
 
-/* Hero */
-.hero {
-  position: relative; min-height: 88vh; display: grid; align-items: center;
-  padding: 0 clamp(16px, 5vw, 56px); overflow: hidden;
-}
-.tiles {
-  position: absolute; right: clamp(-120px, -4vw, 0px); top: 50%; transform: translateY(-50%) rotate(-8deg);
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; width: min(540px, 80vw); opacity: .9;
-}
-.tiles span { aspect-ratio: 1; border-radius: 10px; background: var(--bg2); border: 1px solid var(--line); transition: background 1.2s, box-shadow 1.2s; }
-.tiles span.on-red { background: var(--red); box-shadow: 0 0 28px rgba(229, 56, 59, .35); }
-.tiles span.on-gold { background: var(--gold); box-shadow: 0 0 28px rgba(212, 162, 76, .3); }
-.hero-text { position: relative; max-width: 640px; }
-.hero h1 { font-size: clamp(44px, 8vw, 92px); line-height: 1; margin: 8px 0 22px; letter-spacing: -2px; font-weight: 800; }
-.lead { font-size: clamp(17px, 2.2vw, 21px); color: #c9c8c2; max-width: 34em; }
-.hero-cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
-@media (max-width: 720px) { .tiles { opacity: .25; } }
-
 /* Sections */
 .section { max-width: 1040px; margin: 0 auto; padding: 72px clamp(16px, 5vw, 56px); }
 .section h2 { font-size: 30px; margin: 0 0 18px; letter-spacing: -.5px; }
 .section > p { color: #c9c8c2; max-width: 44em; }
-.tags { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin-top: 22px; }
-.tags li { font: 13px "JetBrains Mono", monospace; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--gold); }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; margin-top: 26px; }
 .card {
@@ -79,8 +59,6 @@ a { color: inherit; text-decoration: none; }
 .card p { margin: 0; font-size: 14px; color: var(--muted); }
 .card .icon { font: 700 26px "JetBrains Mono", monospace; color: var(--red); }
 .card .meta { margin-top: 12px; font: 12px "JetBrains Mono", monospace; color: var(--gold); }
-.links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
-.link { display: flex; flex-direction: column; gap: 4px; font-weight: 600; min-width: 240px; }
 footer { text-align: center; padding: 40px 16px; font-size: 13px; border-top: 1px solid var(--line); }
 
 /* Puzzle modal */

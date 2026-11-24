@@ -1,4 +1,4 @@
-// Page wiring: language switch, hero tiles, puzzle modal, GitHub projects, confetti
+// Page wiring: language switch, puzzle modal, confetti
 
 const $ = id => document.getElementById(id);
 let current = null, handler = null;
@@ -10,15 +10,6 @@ $("lang").onclick = () => {
   applyLang(); renderPuzzleCards();
   if (current) { $("modal-title").textContent = t(current.id + ".name"); $("modal-rules").textContent = t(current.id + ".rules"); }
 };
-
-// Hero: 24 tiles lighting up slowly in red and gold
-const tiles = [...Array(24)].map(() => $("tiles").appendChild(document.createElement("span")));
-function shimmer() {
-  tiles.forEach(s => (s.className = ""));
-  for (let k = 0; k < 5; k++) tiles[rand(24)].className = Math.random() < 0.6 ? "on-red" : "on-gold";
-}
-shimmer();
-if (!matchMedia("(prefers-reduced-motion: reduce)").matches) setInterval(shimmer, 2400);
 
 // Puzzles
 function renderPuzzleCards() {
@@ -51,22 +42,6 @@ $("modal-close").onclick = () => $("modal").close();
 $("modal").addEventListener("close", () => { current = handler = null; });
 $("modal").addEventListener("click", e => { if (e.target === $("modal")) $("modal").close(); });
 document.addEventListener("keydown", e => handler?.key?.(e));
-
-// Projects: public repositories, newest activity first
-fetch("https://api.github.com/users/laurendeaumatthieu/repos?per_page=100&sort=pushed")
-  .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
-  .then(repos => {
-    const shown = repos.filter(r => !r.private && r.name !== "laurendeaumatthieu.github.io");
-    $("project-grid").replaceChildren(...shown.map(r => {
-      const a = el("a", "card");
-      a.href = r.html_url; a.target = "_blank"; a.rel = "noopener";
-      a.append(el("div", "icon", "{ }"), el("h3", "", r.name), el("p", "", r.description || ""));
-      const meta = [r.language, r.stargazers_count ? `★ ${r.stargazers_count}` : "", r.fork ? "fork" : ""].filter(Boolean).join(" · ");
-      if (meta) a.append(el("div", "meta", meta));
-      return a;
-    }));
-  })
-  .catch(() => { $("project-grid").replaceChildren(el("p", "muted", t("projects.error"))); });
 
 // Confetti in red and gold
 function confetti() {

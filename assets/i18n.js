@@ -1,18 +1,7 @@
 // Translations: English is the default, French is the alternative
 const I18N = {
   en: {
-    "nav.about": "About", "nav.puzzles": "Puzzles", "nav.projects": "Projects", "nav.contact": "Contact", "nav.login": "Login",
-    "hero.hello": "Hello, I am",
-    "hero.lead": "Engineer and researcher in medical imaging: tomographic reconstruction, GPU computing, and a lifelong love of puzzles.",
-    "hero.play": "Play a puzzle", "hero.projects": "See projects",
-    "about.title": "About",
-    "about.p1": "I build tools that turn raw scanner data into images doctors can trust. My PhD focused on tomographic reconstruction from incomplete data for non-standard CT geometries, with directional total-variation regularization and GPU code in Python, CuPy and CUDA.",
-    "about.p2": "Today I work on cardiac CT and ECG data: pipelines, archives and the servers that run them. Outside work: puzzles, clean code and the sea.",
     "puzzles.title": "Puzzles", "puzzles.intro": "Seven small puzzles, all made for this page. Pick one and take a break.",
-    "projects.title": "Projects", "projects.intro": "Public repositories, loaded live from GitHub.",
-    "projects.loading": "Loading…", "projects.error": "GitHub is not answering right now. See github.com/laurendeaumatthieu.",
-    "projects.fork": "fork of",
-    "contact.title": "Contact",
     "footer": "Zero trackers.",
     "game.new": "New game", "game.solved": "Solved! ✦", "game.moves": "Moves",
     "p24.name": "Make 24", "p24.desc": "Four numbers, one target.",
@@ -33,18 +22,7 @@ const I18N = {
     "domino.rules": "Fill the drawing with all 24 tiles. Touching ends must show the same number. Tap a tile, then a slot; tap a placed tile to flip it."
   },
   fr: {
-    "nav.about": "À propos", "nav.puzzles": "Puzzles", "nav.projects": "Projets", "nav.contact": "Contact", "nav.login": "Connexion",
-    "hero.hello": "Bonjour, je suis",
-    "hero.lead": "Ingénieur et chercheur en imagerie médicale : reconstruction tomographique, calcul GPU, et une passion de toujours pour les puzzles.",
-    "hero.play": "Jouer à un puzzle", "hero.projects": "Voir les projets",
-    "about.title": "À propos",
-    "about.p1": "Je conçois des outils qui transforment les données brutes des scanners en images fiables pour les médecins. Ma thèse portait sur la reconstruction tomographique à partir de données incomplètes pour des géométries CT non standard, avec une régularisation par variation totale directionnelle et du code GPU en Python, CuPy et CUDA.",
-    "about.p2": "Aujourd'hui je travaille sur des données cardiaques CT et ECG : pipelines, archives et serveurs qui les font tourner. En dehors du travail : puzzles, code propre et la mer.",
     "puzzles.title": "Puzzles", "puzzles.intro": "Sept petits puzzles, tous créés pour cette page. Choisissez-en un et faites une pause.",
-    "projects.title": "Projets", "projects.intro": "Dépôts publics, chargés en direct depuis GitHub.",
-    "projects.loading": "Chargement…", "projects.error": "GitHub ne répond pas pour le moment. Voir github.com/laurendeaumatthieu.",
-    "projects.fork": "fork de",
-    "contact.title": "Contact",
     "footer": "Zéro traceur.",
     "game.new": "Nouvelle partie", "game.solved": "Résolu ! ✦", "game.moves": "Coups",
     "p24.name": "Faire 24", "p24.desc": "Quatre nombres, une cible.",
