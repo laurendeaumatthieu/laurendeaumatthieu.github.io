@@ -10,8 +10,13 @@ The story source lives outside this public repository (private, spoilers). Build
 - `intro`: list of paragraphs shown at the first visit (no spoilers).
 - `moments`: ordered timeline, `[{ "id": "mon-09", "label": "Lundi · 9 h" }]`. Visible from the start unless `"locked": true` (then shown once unlocked).
 - `places`: places available from the start, `[{ "id": "port", "label": "Le port" }]`. Others come from `unlock`.
-- `cast`: identification list, `[{ "name": "…", "role": "…" }]`. Order is free.
-- `who`: secret mapping person number → index in `cast`, `{ "1": 4, "2": 0 }`. People appear as `#n` until identified (confirmed three at a time).
+- `fields`: identity sheet columns, the first being the name (Obra Dinn style), e.g.
+  `[{ "label": "Nom", "options": [{ "label": "…", "group": "Équipage" }, "…"] }, { "label": "Secret", "options": ["…"] }]`.
+  Options are strings or `{ label, group }` (groups become `<optgroup>`).
+- `who`: secret sheet per person number, one option index per field, `{ "1": [4, 2], "2": [0, 1] }`.
+  A sheet is confirmed only when every field is right, three sheets at a time (fewer for the last ones).
+- `aka`: optional default nickname per person, `{ "1": "La pilote au foulard" }` (public, no spoiler);
+  people without one appear as `#n` until renamed or identified.
 - `start`: ids of the scenes unlocked at the beginning.
 - `puzzles`: `{ "<pid>": { "title", "prompt", "type": "code" | "game", "game": "<puzzle id from assets/puzzles.js>" (type game), "answer": "<text>" (type code; compared without case, accents, spaces or punctuation), "reward": { "text", "unlock" } } }`.
 - `final`: `{ "text": "… {0} … {1} …", "options": [[…], […]], "answer": [i, j], "ending": { "title", "lines": ["…"] } }`.
@@ -37,4 +42,4 @@ every referenced moment, place, person and puzzle exists; every scene is reachab
 
 A scene opens with the exact triple (moment, place, sorted people). The scene is encrypted with
 SHA-256 of `scene|moment|place|p1,p2,…`; puzzles with `puz|pid|answer` (`win` for games); the ending
-with `fin|i|j|…`. The engine only stores, per (moment, place), the number of people present (hint).
+with `fin|i|j|…`; a sheet with `who|n|i|j|…`. The engine only stores, per (moment, place), the number of people present (hint).

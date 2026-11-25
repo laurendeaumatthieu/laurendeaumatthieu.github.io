@@ -47,7 +47,12 @@ def main(story_dir: str, out: str):
     places = {p["id"] for p in meta["places"]}
     places |= {p["id"] for s in scenes for p in s.get("unlock", {}).get("places", [])}
     places |= {p["id"] for z in puzzles.values() for p in z["reward"].get("unlock", {}).get("places", [])}
-    who = {int(k): v for k, v in meta["who"].items()}
+    # Identity sheet per person: one option index per field (an int is accepted for a single field)
+    who = {int(k): v if isinstance(v, list) else [v] for k, v in meta["who"].items()}
+    fields = meta["fields"]
+    for p, v in who.items():
+        assert len(v) == len(fields) and all(0 <= i < len(f["options"]) for i, f in zip(v, fields)), f"bad sheet for person {p}"
+    assert all(int(p) in who for p in meta.get("aka", {})), "aka names an unknown person"
 
     # Consistency checks: one scene per (moment, place), known ids everywhere
     seen = {}
@@ -121,8 +126,8 @@ def main(story_dir: str, out: str):
     kf = key("fin", fin["answer"])
     story = {
         "title": meta["title"], "intro": meta["intro"], "moments": meta["moments"], "places": meta["places"],
-        "cast": meta["cast"], "people": len(who),
-        "who": sorted(sha(f"who|{p}|{c}".encode()).hex()[:16] for p, c in who.items()),
+        "fields": fields, "aka": meta.get("aka", {}), "people": len(who),
+        "who": sorted(sha(("who|%d|" % p + "|".join(map(str, v))).encode()).hex()[:16] for p, v in who.items()),
         "start": [scene_key(by_id[i]).hex() for i in meta["start"]],
         "scenes": out_scenes, "hints": hints, "answers": answers,
         "final": {"text": fin["text"], "options": fin["options"], "ending": {ident(kf): encrypt(kf, fin["ending"])}},
