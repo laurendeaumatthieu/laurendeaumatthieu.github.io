@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Build the encrypted story file read by the game engine.
+"""Build the encrypted story file read by the game engine (format v3, see game/FORMAT.md).
 
 Usage: python3 tools/build_story.py <story_dir> <out.js>
 
-<story_dir> holds meta.json and scenes/*.json (format in game/FORMAT.md). Every secret
-payload (scene, puzzle reward, ending) is encrypted with a key derived from the
-answer that opens it, so the published file reveals nothing without playing.
+Nodes are encrypted with random keys handed over by whatever unlocks them; reconstructions with
+their exact (moment, place, people); puzzle rewards with their answer; the ending with its choices.
+The published file reveals nothing without playing.
 """
-import base64, hashlib, json, sys, unicodedata
+import base64, hashlib, json, os, sys, unicodedata
 from pathlib import Path
 
 
@@ -38,103 +38,145 @@ def scene_key(s) -> bytes:
     return key("scene", [s["moment"], s["place"], ",".join(map(str, sorted(s["people"])))])
 
 
+def load_lists(folder: Path):
+    return [x for f in sorted(folder.glob("*.json")) for x in json.loads(f.read_text())]
+
+
+def unlocks_of(item):
+    """Every unlock block carried by a node or a reconstruction (puzzle rewards included)."""
+    t = item.get("type")
+    if t == "search":
+        return [o.get("unlock", {}) for o in item["objects"]]
+    if t == "talk":
+        return [tp.get("unlock", {}) for tp in item["topics"]]
+    if t == "puzzle":
+        return [item["reward"].get("unlock", {})]
+    return [item.get("unlock", {})]
+
+
 def main(story_dir: str, out: str):
     root = Path(story_dir)
     meta = json.loads((root / "meta.json").read_text())
-    scenes = [s for f in sorted((root / "scenes").glob("*.json")) for s in json.loads(f.read_text())]
-    puzzles = meta.get("puzzles", {})
+    nodes = {n["id"]: n for n in load_lists(root / "nodes")}
+    scenes = load_lists(root / "scenes")
     moments = {m["id"] for m in meta["moments"]}
     places = {p["id"] for p in meta["places"]}
-    places |= {p["id"] for s in scenes for p in s.get("unlock", {}).get("places", [])}
-    places |= {p["id"] for z in puzzles.values() for p in z["reward"].get("unlock", {}).get("places", [])}
-    # Identity sheet per person: one option index per field (an int is accepted for a single field)
-    who = {int(k): v if isinstance(v, list) else [v] for k, v in meta["who"].items()}
+    people = {int(k): v for k, v in meta["people"].items()}
     fields = meta["fields"]
-    for p, v in who.items():
-        assert len(v) == len(fields) and all(0 <= i < len(f["options"]) for i, f in zip(v, fields)), f"bad sheet for person {p}"
-    assert all(int(p) in who for p in meta.get("aka", {})), "aka names an unknown person"
+    types = {"chapter", "search", "talk", "evidence", "puzzle"}
 
-    # Consistency checks: one scene per (moment, place), known ids everywhere
+    # Consistency checks
+    for p, v in people.items():
+        sh = v["sheet"]
+        assert len(sh) == len(fields) and all(0 <= i < len(f["options"]) for i, f in zip(sh, fields)), f"bad sheet for person {p}"
+    for n in nodes.values():
+        assert n["type"] in types, f"{n['id']}: unknown type {n['type']}"
+        if n["type"] == "search":
+            assert n["place"] in places, f"{n['id']}: unknown place {n['place']}"
+        if n["type"] == "talk":
+            assert n["person"] in people, f"{n['id']}: unknown person {n['person']}"
+            for tp in n["topics"]:
+                assert "show" not in tp or nodes.get(tp["show"], {}).get("type") == "evidence", f"{n['id']}: show must name evidence"
+                for sp, _ in tp["lines"]:
+                    assert sp in (0, -1, n["person"]), f"{n['id']}: speaker {sp} not in talk"
+        if n["type"] == "puzzle" and n["kind"] == "game":
+            assert n.get("game"), f"{n['id']}: game puzzle without game id"
     seen = {}
     for s in scenes:
         slot = (s["moment"], s["place"])
-        assert slot not in seen, f"two scenes at {slot}: {seen[slot]} and {s['id']}"
+        assert slot not in seen, f"two reconstructions at {slot}: {seen[slot]} and {s['id']}"
         seen[slot] = s["id"]
-        assert s["moment"] in moments, f"{s['id']}: unknown moment {s['moment']}"
-        assert s["place"] in places, f"{s['id']}: unknown place {s['place']}"
+        assert s["moment"] in moments and s["place"] in places, f"{s['id']}: unknown moment or place"
         for p in s["people"]:
-            assert p in who, f"{s['id']}: person {p} missing from meta.who"
+            assert p in people, f"{s['id']}: unknown person {p}"
         for sp, _ in s["lines"]:
             assert sp == 0 or sp in s["people"], f"{s['id']}: speaker {sp} not present"
-        for m in s.get("unlock", {}).get("moments", []):
-            assert m in moments, f"{s['id']}: unknown unlocked moment {m}"
-        for pid in s.get("unlock", {}).get("puzzles", []):
-            assert pid in puzzles, f"{s['id']}: unknown puzzle {pid}"
+    for item in [*nodes.values(), *scenes]:
+        for u in unlocks_of(item):
+            for x in u.get("nodes", []): assert x in nodes, f"{item['id']}: unknown node {x}"
+            for x in u.get("places", []): assert x in places, f"{item['id']}: unknown place {x}"
+            for x in u.get("moments", []): assert x in moments, f"{item['id']}: unknown moment {x}"
+            for x in u.get("people", []): assert x in people, f"{item['id']}: unknown person {x}"
+    for x in meta["start"]:
+        assert x in nodes, f"start: unknown node {x}"
 
-    by_id = {s["id"]: s for s in scenes}
-    # Reachability: a scene can be found once its moment and place are available and all its people
-    # are known (met in a scene or unlocked); puzzles are assumed solved once they appear, and their
-    # rewards may unlock anything, including other puzzles
-    reach, known, opened = set(), set(), set()
-    avail = {p["id"] for p in meta["places"]}
+    # Reachability fixpoint: everything held is used as soon as its requirements are met
+    held, done, reach, known = set(meta["start"]), set(), set(), set()
+    places_on = {p["id"] for p in meta["places"] if not p.get("locked")}
     moments_on = {m["id"] for m in meta["moments"] if not m.get("locked")}
 
     def apply(u):
-        before = (len(known), len(avail), len(moments_on), len(opened))
-        known.update(u.get("people", [])); moments_on.update(u.get("moments", []))
-        avail.update(p["id"] for p in u.get("places", []))
-        for pid in u.get("puzzles", []):
-            if pid not in opened:
-                opened.add(pid); apply(puzzles[pid]["reward"].get("unlock", {}))
-        return before != (len(known), len(avail), len(moments_on), len(opened))
+        held.update(u.get("nodes", [])); known.update(u.get("people", []))
+        places_on.update(u.get("places", [])); moments_on.update(u.get("moments", []))
 
-    def enter(s):
-        reach.add(s["id"]); known.update(s["people"]); apply(s.get("unlock", {}))
-
-    for sid in meta["start"]:
-        enter(by_id[sid])
     changed = True
     while changed:
         changed = False
+        for nid in list(held):
+            n = nodes[nid]
+            if n["type"] == "talk":
+                known.add(n["person"])
+                for i, tp in enumerate(n["topics"]):
+                    if (nid, i) not in done and (not tp.get("show") or tp["show"] in held):
+                        done.add((nid, i)); apply(tp.get("unlock", {})); changed = True
+            elif nid not in done and (n["type"] != "search" or n["place"] in places_on):
+                done.add(nid); [apply(u) for u in unlocks_of(n)]; changed = True
         for s in scenes:
-            if s["id"] not in reach and s["moment"] in moments_on and s["place"] in avail and set(s["people"]) <= known:
-                enter(s); changed = True
-    lost = [s["id"] for s in scenes if s["id"] not in reach]
-    assert not lost, f"unreachable scenes: {lost}"
+            if s["id"] not in reach and s["moment"] in moments_on and s["place"] in places_on and set(s["people"]) <= known:
+                reach.add(s["id"]); known.update(s["people"]); apply(s.get("unlock", {})); changed = True
+    lost_nodes = [n for n in nodes if n not in held]
+    lost_search = [n for n in nodes if nodes[n]["type"] == "search" and nodes[n]["place"] not in places_on]
+    lost_topics = [f"{n}#{i}" for n, x in nodes.items() if x["type"] == "talk" for i in range(len(x["topics"])) if (n, i) not in done]
+    lost_scenes = [s["id"] for s in scenes if s["id"] not in reach]
+    assert not (lost_nodes or lost_search or lost_topics or lost_scenes), \
+        f"unreachable: nodes {lost_nodes} searches {lost_search} topics {lost_topics} reconstructions {lost_scenes}"
+
+    # Encryption
+    nkeys = {nid: os.urandom(32) for nid in nodes}
 
     def public_unlock(u):
         u = dict(u or {})
-        if "puzzles" in u:
-            u["puzzles"] = [{"id": pid, **{k: v for k, v in puzzles[pid].items() if k in ("title", "prompt", "type", "game")}}
-                            for pid in u["puzzles"]]
+        if "nodes" in u:
+            u["nodes"] = [nkeys[x].hex() for x in u["nodes"]]
         return u
+
+    out_nodes, answers = {}, {}
+    for nid, n in nodes.items():
+        body = {k: v for k, v in n.items() if k not in ("answer", "reward")}
+        if n["type"] == "search":
+            body["objects"] = [{**o, "unlock": public_unlock(o.get("unlock"))} for o in n["objects"]]
+        elif n["type"] == "talk":
+            body["topics"] = [{**tp, "unlock": public_unlock(tp.get("unlock"))} for tp in n["topics"]]
+        elif n["type"] == "chapter":
+            body["unlock"] = public_unlock(n.get("unlock"))
+        elif n["type"] == "puzzle":
+            k = key("puz", [nid, "win" if n["kind"] == "game" else norm(n["answer"])])
+            answers[ident(k)] = encrypt(k, {"text": n["reward"].get("text", ""), "unlock": public_unlock(n["reward"].get("unlock"))})
+        out_nodes[ident(nkeys[nid])] = encrypt(nkeys[nid], body)
 
     out_scenes, hints = {}, {}
     for s in scenes:
         k = scene_key(s)
-        payload = {k2: s[k2] for k2 in ("id", "title", "moment", "place", "people", "lines", "lead") if k2 in s}
+        payload = {k2: s[k2] for k2 in ("id", "title", "moment", "place", "people", "lines") if k2 in s}
         payload["unlock"] = public_unlock(s.get("unlock"))
         out_scenes[ident(k)] = encrypt(k, payload)
         hints[sha(f"hint|{s['moment']}|{s['place']}".encode()).hex()[:16]] = len(s["people"])
-
-    answers = {}
-    for pid, z in puzzles.items():
-        k = key("puz", [pid, "win" if z["type"] == "game" else norm(z["answer"])])
-        answers[ident(k)] = encrypt(k, {"text": z["reward"].get("text", ""), "unlock": public_unlock(z["reward"].get("unlock"))})
 
     fin = meta["final"]
     kf = key("fin", fin["answer"])
     story = {
         "title": meta["title"], "intro": meta["intro"], "moments": meta["moments"], "places": meta["places"],
-        "fields": fields, "aka": meta.get("aka", {}), "people": len(who),
-        "who": sorted(sha(("who|%d|" % p + "|".join(map(str, v))).encode()).hex()[:16] for p, v in who.items()),
-        "start": [scene_key(by_id[i]).hex() for i in meta["start"]],
-        "scenes": out_scenes, "hints": hints, "answers": answers,
+        "fields": fields, "people": {p: {k: v for k, v in x.items() if k in ("aka", "look")} for p, x in people.items()},
+        "who": sorted(sha(("who|%d|" % p + "|".join(map(str, v["sheet"]))).encode()).hex()[:16] for p, v in people.items()),
+        "start": [nkeys[x].hex() for x in meta["start"]],
+        "nodes": out_nodes, "scenes": out_scenes, "hints": hints, "answers": answers,
         "final": {"text": fin["text"], "options": fin["options"], "ending": {ident(kf): encrypt(kf, fin["ending"])}},
     }
     Path(out).write_text("// Generated by tools/build_story.py: do not edit\nwindow.STORY = "
                          + json.dumps(story, ensure_ascii=False, separators=(",", ":")) + ";\n")
-    print(f"{len(scenes)} scenes, {len(puzzles)} puzzles, {len(who)} people -> {out}")
+    count = lambda t: sum(n["type"] == t for n in nodes.values())
+    print(f"{count('chapter')} chapters, {count('search')} searches, {count('talk')} talks, {count('evidence')} evidence, "
+          f"{count('puzzle')} puzzles, {len(scenes)} reconstructions, {len(people)} people -> {out}")
 
 
 if __name__ == "__main__":

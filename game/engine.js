@@ -1,10 +1,10 @@
-// Lantern engine. A scene opens only when the player names its exact moment, place and
-// people: that triple is the key that decrypts it (see tools/build_story.py).
+// Investigation engine (format v3, see game/FORMAT.md). Nodes open with keys handed over by unlocks,
+// reconstructions with their exact (moment, place, people), puzzle rewards with their answer.
 
 const S = window.STORY;
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
-const SAVE = "lantern-save-v2";
+const SAVE = "enquete-save-v3";
 
 // ---- Crypto (must match tools/build_story.py) ----
 // Pure JS SHA-256: WebCrypto is missing on plain-HTTP pages
@@ -55,181 +55,337 @@ async function open(table, k) { const id = await idOf(k); return table[id] ? dec
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 
 // ---- State ----
-const fresh = () => ({ keys: [], moments: [], places: [], known: [], labels: {}, guess: {}, ok: [], puzzles: [], solved: [], notes: "", pins: [], ending: null, finalOpen: false, seenIntro: false });
-let st = fresh(), scenes = {}, current = null, sel = { moment: null, place: null, people: new Set() };
-// Scene list filters and items discovered during this visit (highlighted until clicked)
-const flt = { moment: "", place: "", a: "", b: "" }, novel = new Set();
+const fresh = () => ({ keys: [], skeys: [], done: [], asked: [], moments: [], places: [], known: [], labels: {}, guess: {}, ok: [], solved: [], notes: "", pins: [], ending: null, finalOpen: false, seenIntro: false });
+let st = fresh(), N = {}, order = [], R = {};          // decrypted nodes by id (in unlock order), reconstructions by id
+const ui = { section: "journal", moment: null, room: null, pick: new Set(), view: null, flt: { moment: "", place: "", a: "", b: "" } };
+const novel = new Set(), messages = [], hintCache = new Map();
 function save() { try { localStorage.setItem(SAVE, JSON.stringify(st)); } catch (e) { /* storage unavailable */ } }
+const add = (arr, xs = []) => xs.forEach(x => { if (!arr.includes(x)) arr.push(x); });
 
-async function unlockScene(k, quiet = false) {
-  const s = await open(S.scenes, k);
-  if (!s) return null;
-  if (!st.keys.includes(hex(k))) st.keys.push(hex(k));
-  scenes[s.id] = s;
-  s.people.forEach(p => { if (!st.known.includes(p)) st.known.push(p); });
-  applyUnlock(s.unlock, quiet);
-  return s;
+async function addNode(h) {
+  const n = await open(S.nodes, unhex(h));
+  if (!n || N[n.id]) return;
+  N[n.id] = n; order.push(n.id); add(st.keys, [h]);
+  if (n.type === "talk") add(st.known, [n.person]);
 }
-// Unlocks carry places, puzzles, moments (ids), people (numbers) and an optional message
-function applyUnlock(u = {}, quiet = false) {
-  (u.moments || []).forEach(m => { if (!st.moments.includes(m)) st.moments.push(m); });
-  (u.people || []).forEach(p => { if (!st.known.includes(p)) st.known.push(p); });
+// Each unlock source (chapter, object, topic, reconstruction, puzzle) applies once
+async function applyUnlock(src, u = {}) {
+  if (st.done.includes(src)) return;
+  st.done.push(src);
+  for (const h of u.nodes || []) await addNode(h);
+  add(st.places, u.places); add(st.moments, u.moments); add(st.known, u.people);
   if (u.final) st.finalOpen = true;
-  if (u.message && !quiet) { $("notice-text").replaceChildren(...[].concat(u.message).map(t => el("p", "", t))); $("notice").showModal(); }
-  (u.places || []).forEach(p => { if (!st.places.some(q => q.id === p.id)) st.places.push(p); });
-  (u.puzzles || []).forEach(p => { if (!st.puzzles.some(q => q.id === p.id)) st.puzzles.push(p); });
+  if (u.message) messages.push([].concat(u.message));
 }
 async function load(data) {
-  st = Object.assign(fresh(), data); scenes = {};
-  for (const h of st.keys) await unlockScene(unhex(h), true);
-  for (const r of st.solved) applyUnlock(r.unlock, true);
+  st = Object.assign(fresh(), data); N = {}; order = []; R = {};
+  for (const h of [...st.keys]) await addNode(h);
+  for (const h of st.skeys) { const s = await open(S.scenes, unhex(h)); if (s) R[s.id] = s; }
 }
+async function newGame() { await load(fresh()); for (const h of S.start) await addNode(h); save(); }
 
 // ---- Helpers (el and rand come from assets/puzzles.js) ----
+const nodes = type => order.map(id => N[id]).filter(n => n.type === type);
+const moments = () => S.moments.filter(m => !m.locked || st.moments.includes(m.id));
+const places = () => S.places.filter(p => !p.locked || st.places.includes(p.id));
 const momentIdx = id => S.moments.findIndex(m => m.id === id);
 const momentLabel = id => S.moments.find(m => m.id === id)?.label ?? id;
-const allPlaces = () => [...S.places, ...st.places];
-const placeLabel = id => allPlaces().find(p => p.id === id)?.label ?? id;
-// Identity fields: options are strings or { label, group }; the first field is the name
+const placeLabel = id => S.places.find(p => p.id === id)?.label ?? id;
+const sceneAt = (m, p) => Object.values(R).find(s => s.moment === m && s.place === p);
+const sortedScenes = () => Object.values(R).sort((a, b) => momentIdx(a.moment) - momentIdx(b.moment) || S.places.findIndex(p => p.id === a.place) - S.places.findIndex(p => p.id === b.place));
 const optLabel = (f, i) => { const o = S.fields[f].options[i]; return typeof o === "string" ? o : o.label; };
-const who = p => (p === 0 ? "" : st.ok.includes(p) ? optLabel(0, st.guess[p][0]) : st.labels[p] || S.aka?.[p] || `#${p}`);
+const who = p => (p === 0 ? "" : p === -1 ? "Vous" : st.ok.includes(p) ? optLabel(0, st.guess[p][0]) : st.labels[p] || S.people[p]?.aka || `#${p}`);
 const nameEl = (tag, cls, p) => { const e = el(tag, cls, who(p)); e.dataset.p = p; return e; };
 const refreshNames = () => document.querySelectorAll("[data-p]").forEach(e => { e.textContent = who(+e.dataset.p); });
-// Snapshot of what is known, to announce and highlight discoveries
-const snap = () => ({ p: new Set(st.known), l: new Set(allPlaces().map(x => x.id)), m: new Set(st.moments) });
-function discovered(b) {
-  const np = st.known.filter(p => !b.p.has(p)), nl = allPlaces().filter(x => !b.l.has(x.id)), nm = st.moments.filter(m => !b.m.has(m));
-  np.forEach(p => novel.add("p" + p)); nl.forEach(x => novel.add("l" + x.id)); nm.forEach(m => novel.add("m" + m));
-  const bits = [...nm.map(momentLabel), ...nl.map(x => x.label), np.length ? `${np.length} personne${np.length > 1 ? "s" : ""}` : ""].filter(Boolean);
-  return bits.length ? ` Nouveau : ${bits.join(", ")}.` : "";
+const talkOf = p => nodes("talk").find(n => n.person === p);
+const held = id => !!N[id];
+async function hint(m, p) {
+  const k = m + "|" + p;
+  if (!hintCache.has(k)) hintCache.set(k, S.hints[hex(await sha(`hint|${m}|${p}`)).slice(0, 16)]);
+  return hintCache.get(k);
 }
-function follow(f) {
-  Object.assign(flt, { moment: "", place: "", a: "", b: "" }, f);
-  document.querySelector('.tabs button[data-tab="scenes"]').click(); renderList();
-}
-const sortedScenes = () => Object.values(scenes).sort((a, b) => momentIdx(a.moment) - momentIdx(b.moment) || allPlaces().findIndex(p => p.id === a.place) - allPlaces().findIndex(p => p.id === b.place));
-function say(text, cls = "") { const m = $("msg"); m.textContent = text; m.className = "msg"; void m.offsetWidth; m.className = "msg " + cls; }
+const svgNS = "http://www.w3.org/2000/svg";
+const svgEl = (tag, attrs = {}) => { const e = document.createElementNS(svgNS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
 
-// ---- Lantern ----
-function renderLantern() {
-  const chips = (box, kind, items, isOn, onClick) => box.replaceChildren(...items.map(([id, label]) => {
-    const b = kind === "p" ? nameEl("button", "chip", id) : el("button", "chip", label);
-    if (isOn(id)) b.classList.add("on");
-    if (novel.has(kind + id)) b.classList.add("new");
-    b.onclick = () => { novel.delete(kind + id); sfx("tick"); onClick(id); };
+// Procedural portrait from the person number and optional look hints
+function portrait(p, cls = "") {
+  let seed = (p * 2654435761) >>> 0;
+  const r = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32, pick = a => a[Math.floor(r() * a.length)];
+  const L = S.people[p]?.look || {};
+  const skin = L.skin || pick(["#f1c7a5", "#d9a27b", "#a86f4c", "#7a4a2e", "#e8b894", "#c68e64"]);
+  const hair = L.hair || pick(["short", "long", "bun", "curly", "bald", "helmet"]);
+  const hc = L.hair_color || pick(["#2b1b12", "#6b3b1f", "#c9a15a", "#b0413e", "#d8d8d8", "#111"]);
+  const out = L.outfit || pick(["#e5383b", "#d4a24c", "#3a7ca5", "#5a8f5a", "#8a5fbf", "#777"]);
+  const shapes = {
+    short: `<path d="M11.5 17C11 8 29 8 28.5 17C27 11.5 13 11.5 11.5 17Z" fill="${hc}"/>`,
+    long: `<path d="M11 19C9.5 7 30.5 7 29 19L30 30L26 28L26.5 15C22 11.5 18 11.5 13.5 15L14 28L10 30Z" fill="${hc}"/>`,
+    bun: `<path d="M11.5 17C11 8 29 8 28.5 17C27 11.5 13 11.5 11.5 17Z" fill="${hc}"/><circle cx="20" cy="7.5" r="3.6" fill="${hc}"/>`,
+    curly: [12, 15, 19, 23, 27, 28.5, 11].map((x, i) => `<circle cx="${x}" cy="${i > 4 ? 15 : 10 + (i % 2)}" r="3.6" fill="${hc}"/>`).join(""),
+    bald: "", helmet: "",
+  };
+  const helmet = hair === "helmet" ? `<circle cx="20" cy="18" r="12.5" fill="rgba(150,210,230,.12)" stroke="#9cd" stroke-width="1.2"/><path d="M12 13Q20 7 28 13" stroke="#fff" stroke-opacity=".4" fill="none"/>` : "";
+  const s = el("span", "portrait " + cls);
+  s.innerHTML = `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#1c1410"/>
+    <path d="M5 41C5 31 13 27.5 20 27.5C27 27.5 35 31 35 41Z" fill="${out}"/><rect x="17.5" y="22" width="5" height="6" fill="${skin}"/>
+    <circle cx="20" cy="18" r="8" fill="${skin}"/>${shapes[hair] || ""}
+    <circle cx="17" cy="18.5" r=".9" fill="#1a1a1a"/><circle cx="23" cy="18.5" r=".9" fill="#1a1a1a"/>${helmet}</svg>`;
+  return s;
+}
+
+// ---- Discoveries: toast, sound, highlights ----
+const snap = () => ({ n: new Set(order), l: new Set(st.places), m: new Set(st.moments), p: new Set(st.known), f: st.finalOpen });
+const KIND = { chapter: "Chapitre", search: "Fouille", talk: "Interrogatoire", evidence: "Preuve", puzzle: "Énigme" };
+function announce(b) {
+  const items = [];
+  order.filter(id => !b.n.has(id)).forEach(id => { novel.add("n:" + id); items.push(`${KIND[N[id].type]} · ${N[id].title}`); });
+  st.places.filter(x => !b.l.has(x)).forEach(x => { novel.add("l:" + x); items.push(`Lieu · ${placeLabel(x)}`); });
+  st.moments.filter(x => !b.m.has(x)).forEach(x => { novel.add("m:" + x); items.push(`Moment · ${momentLabel(x)}`); });
+  const np = st.known.filter(x => !b.p.has(x)); np.forEach(x => novel.add("p:" + x));
+  if (np.length) items.push(`${np.length} dossier${np.length > 1 ? "s" : ""} ouvert${np.length > 1 ? "s" : ""}`);
+  if (st.finalOpen && !b.f) items.push("Conclusion disponible");
+  if (items.length) { toast(items); setTimeout(() => sfx("discover"), 250); }
+}
+async function discover(fn) {
+  const b = snap(); await fn(); save(); announce(b); renderNav(); renderPane();
+  while (messages.length) await notice(messages.shift());
+}
+function toast(items) {
+  const t = el("div", "toast");
+  t.append(el("div", "mono gold", "▸ NOUVEAU"), ...items.map(x => el("div", "", x)));
+  $("toasts").append(t);
+  setTimeout(() => t.classList.add("out"), 4200); setTimeout(() => t.remove(), 4800);
+}
+function notice(paragraphs) {
+  return new Promise(res => {
+    $("notice-text").replaceChildren(...paragraphs.map(p => el("p", "", p)));
+    $("notice").showModal(); $("notice").addEventListener("close", res, { once: true });
+  });
+}
+
+// ---- Navigation ----
+const SECTIONS = [["journal", "Journal"], ["carte", "Carte"], ["dossiers", "Dossiers"], ["preuves", "Preuves"], ["enigmes", "Énigmes"], ["carnet", "Carnet"], ["conclusion", "Conclusion"]];
+const NEWS = {
+  journal: () => order.some(id => N[id].type === "chapter" && novel.has("n:" + id)),
+  carte: () => [...novel].some(k => k.startsWith("l:") || k.startsWith("m:") || (k.startsWith("n:") && N[k.slice(2)]?.type === "search")),
+  dossiers: () => [...novel].some(k => k.startsWith("p:") || (k.startsWith("n:") && N[k.slice(2)]?.type === "talk")),
+  preuves: () => nodes("evidence").some(n => novel.has("n:" + n.id)),
+  enigmes: () => nodes("puzzle").some(n => novel.has("n:" + n.id)),
+};
+const SHOWN = { enigmes: () => nodes("puzzle").length > 0, preuves: () => nodes("evidence").length > 0, conclusion: () => st.finalOpen || !!st.ending };
+function renderNav() {
+  $("sections").replaceChildren(...SECTIONS.filter(([id]) => !SHOWN[id] || SHOWN[id]()).map(([id, label]) => {
+    const b = el("button", ui.section === id ? "on" : "", label);
+    if (NEWS[id]?.()) b.append(el("span", "pip"));
+    b.onclick = () => go(id);
     return b;
   }));
-  chips($("moments"), "m", S.moments.filter(m => !m.locked || st.moments.includes(m.id)).map(m => [m.id, m.label]), id => sel.moment === id, id => { sel.moment = sel.moment === id ? null : id; renderLantern(); });
-  chips($("places"), "l", allPlaces().map(p => [p.id, p.label]), id => sel.place === id, id => { sel.place = sel.place === id ? null : id; renderLantern(); });
-  chips($("people"), "p", st.known.slice().sort((a, b) => a - b).map(p => [p]), p => sel.people.has(p),
-    p => { sel.people.has(p) ? sel.people.delete(p) : sel.people.add(p); renderLantern(); });
-  filterPeople();
-  $("people-count").textContent = sel.people.size ? `(${sel.people.size})` : "";
 }
-// Hide people chips not matching the filter (selected ones always stay visible)
-function filterPeople() {
-  const q = norm($("people-filter").value);
-  $("people").querySelectorAll(".chip").forEach(b => { b.hidden = q && !b.classList.contains("on") && !norm(`${b.dataset.p} ${b.textContent}`).includes(q); });
-}
-$("people-filter").oninput = filterPeople;
-$("people-clear").onclick = () => { sel.people.clear(); renderLantern(); };
+function go(section) { ui.section = section; sfx("tick"); renderNav(); renderPane(); }
 
-async function light() {
-  if (!sel.moment || !sel.place) return say("Choisissez un moment et un lieu.");
-  const people = [...sel.people].sort((a, b) => a - b);
-  const before = snap(), had = Object.keys(scenes).length;
-  const s = await unlockScene(await keyOf("scene", [sel.moment, sel.place, people.join(",")]));
-  if (s) {
-    const lamp = $("light"); lamp.classList.remove("lit"); void lamp.offsetWidth; lamp.classList.add("lit");
-    const r = lamp.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, 60);
-    sfx("light"); if (novel.size) setTimeout(() => sfx("discover"), 700);
-    say((Object.keys(scenes).length > had ? "La lanterne s'illumine." : "Scène déjà connue.") + discovered(before), "good");
-    save(); renderAll(); return show(s.id);
-  }
-  const n = S.hints[hex(await sha(`hint|${sel.moment}|${sel.place}`)).slice(0, 16)];
-  sfx(n !== undefined ? "hint" : "miss");
-  if (n !== undefined) say(`La flamme vacille : une scène existe ici, avec ${n} personne${n > 1 ? "s" : ""}.`, "warn");
-  else say("La lanterne reste éteinte : rien ne s'est passé ici à ce moment.");
+let paneToken = 0;
+async function renderPane() {
+  const token = ++paneToken, box = el("div", "pane-in");
+  await ({ journal: renderJournal, carte: renderMap, dossiers: renderDossiers, preuves: renderEvidence, enigmes: renderPuzzles, carnet: renderNotebook, conclusion: renderFinal })[ui.section](box);
+  if (token === paneToken) $("pane").replaceChildren(box);
 }
+const item = (label, onclick, key, on, sub) => {
+  const b = el("button", "item" + (on ? " on" : "") + (key && novel.has(key) ? " new" : ""));
+  b.append(el("span", "", label)); if (sub) b.append(el("span", "muted", sub));
+  b.onclick = () => { if (key) novel.delete(key); onclick(); renderNav(); };
+  return b;
+};
 
-// ---- Scene viewer ----
-function show(id, line = -1) {
-  current = id;
-  const s = scenes[id], v = $("scene");
-  v.replaceChildren();
-  const head = el("div", "scene-head");
-  // Moment, place and people link to the scene list filtered on them
-  const link = (text, f, p) => { const b = p ? nameEl("button", "link", p) : el("button", "link", text); b.title = "Voir les scènes liées"; b.onclick = () => follow(f); return b; };
+// ---- Reader ----
+function reader(kind, title, ...children) {
+  const r = $("reader"), head = el("header", "rhead");
+  head.append(el("div", "mono kicker", kind), el("h2", "", title));
+  r.replaceChildren(head, ...children);
+  r.scrollTop = 0;
+  if (matchMedia("(max-width: 900px)").matches) r.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+const paras = (list, cls = "prose") => { const d = el("div", cls); (list || []).forEach((t, i) => { const p = el("p", "", t); p.style.animationDelay = `${Math.min(i, 12) * 60}ms`; d.append(p); }); return d; };
+function line(sp, text, i, ref) {
+  const p = el("p", sp === 0 ? "line narr" : sp === -1 ? "line me" : "line");
+  p.style.animationDelay = `${Math.min(i, 20) * 35}ms`;
+  if (sp > 0) p.append(portrait(sp, "tiny"));
+  if (sp) p.append(nameEl("span", "who", sp));
+  p.append(el("span", "say", text));
+  p.title = "Épingler dans le carnet";
+  p.onclick = () => {
+    if (st.pins.some(x => x.t === text)) return;
+    st.pins.push({ t: text, sp, ref }); save(); sfx("pin"); p.classList.add("hit");
+    toast(["Réplique épinglée dans le carnet"]);
+  };
+  return p;
+}
+const link = (text, onclick, p) => { const b = p ? nameEl("button", "link", p) : el("button", "link", text); b.onclick = onclick; return b; };
+function follow(f) { Object.assign(ui.flt, { moment: "", place: "", a: "", b: "" }, f); go("journal"); }
+
+async function openChapter(id) {
+  const n = N[id]; ui.view = { id }; novel.delete("n:" + id);
+  reader("CHAPITRE", n.title, paras(n.text, "prose book"));
+  await discover(() => applyUnlock("n:" + id, n.unlock));
+}
+function showScene(id, hit = -1) {
+  const s = R[id]; ui.view = { id };
   const where = el("div", "mono gold");
-  where.append(link(momentLabel(s.moment), { moment: s.moment }), " · ", link(placeLabel(s.place), { place: s.place }));
-  head.append(where, el("h2", "", s.title || ""));
+  where.append(link(momentLabel(s.moment), () => follow({ moment: s.moment })), " · ", link(placeLabel(s.place), () => follow({ place: s.place })));
   const present = el("div", "present", "Présents : ");
-  s.people.forEach((p, k) => { if (k) present.append(", "); present.append(link("", { a: String(p) }, p)); });
-  head.append(present);
-  v.append(head);
-  s.lines.forEach(([sp, text], i) => {
-    const p = el("p", sp === 0 ? "line narr" : "line");
-    p.style.animationDelay = `${Math.min(i, 20) * 40}ms`;
-    if (sp) p.append(nameEl("span", "who", sp));
-    p.append(document.createTextNode(text));
-    if (i === line) p.classList.add("hit");
-    p.title = "Épingler dans le carnet";
-    p.onclick = () => { const pin = { id, i }; if (!st.pins.some(q => q.id === id && q.i === i)) { st.pins.push(pin); save(); renderNotebook(); sfx("pin"); say("Réplique épinglée.", "good"); } };
-    v.append(p);
-  });
-  if (line >= 0) v.querySelector(".hit")?.scrollIntoView({ block: "center" });
-  else v.scrollTop = 0;
-  renderList();
+  s.people.forEach((p, k) => { if (k) present.append(", "); present.append(link("", () => follow({ a: String(p) }), p)); });
+  const lines = el("div", "lines");
+  s.lines.forEach(([sp, t], i) => { const l = line(sp, t, i, { v: "scene", id }); if (i === hit) l.classList.add("hit"); lines.append(l); });
+  reader("RECONSTITUTION", s.title || "", where, present, lines);
+  if (hit >= 0) lines.children[hit]?.scrollIntoView({ block: "center" });
 }
+function openSearch(id) {
+  const n = N[id]; ui.view = { id }; novel.delete("n:" + id);
+  const list = el("div", "objects");
+  n.objects.forEach((o, i) => {
+    const src = `n:${id}#${i}`;
+    if (st.done.includes(src)) {
+      const c = el("div", "object seen"); c.append(el("h4", "", o.label), paras(o.text)); list.append(c);
+    } else {
+      const b = el("button", "object", "⌕ " + o.label);
+      b.onclick = async () => { sfx("tick"); await discover(() => applyUnlock(src, o.unlock)); openSearch(id); };
+      list.append(b);
+    }
+  });
+  reader(`FOUILLE · ${placeLabel(n.place)}`, n.title, paras(n.text), list);
+}
+function openTalk(id, scroll = false) {
+  const n = N[id]; ui.view = { id }; novel.delete("n:" + id);
+  const head = el("div", "talker"); head.append(portrait(n.person, "big"), nameEl("strong", "", n.person));
+  const log = el("div", "lines");
+  st.asked.filter(a => a.startsWith(id + "#")).forEach(a => {
+    const tp = n.topics[+a.split("#")[1]];
+    log.append(el("p", "q mono", "› " + (tp.show ? `Montrer : ${N[tp.show]?.title}` : tp.q)));
+    tp.lines.forEach(([sp, t], i) => log.append(line(sp, t, i, { v: "talk", id })));
+  });
+  const ask = el("div", "topics");
+  n.topics.forEach((tp, i) => {
+    const key = `${id}#${i}`;
+    if (st.asked.includes(key) || (tp.show && !held(tp.show))) return;
+    const b = el("button", "topic" + (tp.show ? " show" : ""), tp.show ? `Montrer : ${N[tp.show].title}` : tp.q);
+    b.onclick = async () => { st.asked.push(key); sfx("tick"); await discover(() => applyUnlock("n:" + key, tp.unlock)); openTalk(id, true); };
+    ask.append(b);
+  });
+  if (!ask.children.length) ask.append(el("p", "muted", "Plus rien à demander pour l'instant."));
+  reader("INTERROGATOIRE", n.title, head, paras(n.text), log, ask);
+  if (scroll) { const r = $("reader"); r.scrollTop = r.scrollHeight; }
+}
+function openEvidence(id) { const n = N[id]; ui.view = { id }; novel.delete("n:" + id); reader("PREUVE", n.title, paras(n.text)); renderNav(); }
+function openRef(ref) { ({ scene: () => showScene(ref.id), talk: () => openTalk(ref.id), chapter: () => openChapter(ref.id) })[ref.v]?.(); }
 
-// ---- Side panels ----
-function renderList() {
-  const box = $("tab-scenes"), all = sortedScenes();
+// ---- Journal: chapters and reconstructions ----
+function renderJournal(box) {
+  box.append(el("h3", "", "Chapitres"));
+  nodes("chapter").forEach(n => box.append(item(n.title, () => openChapter(n.id), "n:" + n.id, ui.view?.id === n.id)));
+  box.append(el("h3", "", "Reconstitutions"));
+  const all = sortedScenes(), f = ui.flt;
   const pick = (key, label, items) => {
     const s = el("select"); s.append(el("option", "", label)); s.firstChild.value = "";
     items.forEach(([v, t]) => { const o = el("option", "", t); o.value = v; s.append(o); });
-    s.value = flt[key]; if (s.value !== flt[key]) flt[key] = "";
-    s.onchange = () => { flt[key] = s.value; renderList(); };
+    s.value = f[key]; if (s.value !== f[key]) f[key] = "";
+    s.onchange = () => { f[key] = s.value; renderPane(); };
     return s;
   };
+  if (!all.length) return box.append(el("p", "muted", "Aucune pour l'instant : sur la carte, choisissez un moment et une pièce où les capteurs ont vu des silhouettes."));
   const people = st.known.slice().sort((a, b) => a - b).map(p => [String(p), `${who(p)}${who(p) === `#${p}` ? "" : ` (#${p})`}`]);
   const bar = el("div", "filters");
   bar.append(pick("moment", "Tous les moments", S.moments.filter(m => all.some(s => s.moment === m.id)).map(m => [m.id, m.label])),
-    pick("place", "Tous les lieux", allPlaces().filter(p => all.some(s => s.place === p.id)).map(p => [p.id, p.label])),
+    pick("place", "Tous les lieux", S.places.filter(p => all.some(s => s.place === p.id)).map(p => [p.id, p.label])),
     pick("a", "Avec n'importe qui", people), pick("b", "… et aussi avec", people));
-  const list = all.filter(s => (!flt.moment || s.moment === flt.moment) && (!flt.place || s.place === flt.place)
-    && (!flt.a || s.people.includes(+flt.a)) && (!flt.b || s.people.includes(+flt.b)));
-  const count = el("p", "muted", `${Object.keys(scenes).length} / ${Object.keys(S.scenes).length} scènes trouvées`);
-  if (Object.values(flt).some(Boolean)) {
-    const clear = el("button", "link", "effacer les filtres"); clear.onclick = () => follow({});
-    count.append(` · ${list.length} affichée${list.length > 1 ? "s" : ""} · `, clear);
-  }
-  box.replaceChildren(bar, count);
-  // Chronological list grouped by moment
+  const list = all.filter(s => (!f.moment || s.moment === f.moment) && (!f.place || s.place === f.place) && (!f.a || s.people.includes(+f.a)) && (!f.b || s.people.includes(+f.b)));
+  const count = el("p", "muted", `${all.length} / ${Object.keys(S.scenes).length} reconstituées`);
+  if (Object.values(f).some(Boolean)) count.append(` · ${list.length} affichée${list.length > 1 ? "s" : ""} · `, link("effacer les filtres", () => follow({})));
+  box.append(bar, count);
   let last = null;
   list.forEach(s => {
     if (s.moment !== last) { box.append(el("h4", "", momentLabel(s.moment))); last = s.moment; }
-    const b = el("button", "item" + (s.id === current ? " on" : ""));
-    b.append(el("span", "", `${placeLabel(s.place)}${s.lead ? " ✦" : ""}`), el("span", "muted", ` · ${s.title || ""}`));
-    b.title = s.people.map(who).join(", ");
-    b.onclick = () => show(s.id);
-    box.append(b);
+    box.append(item(placeLabel(s.place), () => showScene(s.id), null, ui.view?.id === s.id, ` · ${s.title || ""}`));
   });
 }
 
-function renderPeople() {
-  const box = $("tab-people"), need = Math.min(3, S.people - st.ok.length);
-  const fieldNames = S.fields.map(f => f.label.toLowerCase()).join(" + ");
-  const q = el("input"); q.placeholder = "Filtrer (numéro, surnom, nom)…";
-  const list = el("div");
-  box.replaceChildren(el("p", "muted", `Renommez chacun à votre guise, puis proposez ${fieldNames}. Les fiches justes se confirment par ${need || 3} à la fois. Identifiés : ${st.ok.length} / ${S.people}.`), q, list);
+// ---- Map: timeline, rooms, searches, reconstructions ----
+async function renderMap(box) {
+  const ms = moments();
+  if (!ms.some(m => m.id === ui.moment)) ui.moment = ms[0]?.id;
+  const idx = ms.findIndex(m => m.id === ui.moment);
+  const setMoment = i => { ui.moment = ms[i].id; novel.delete("m:" + ui.moment); ui.pick.clear(); sfx("tick"); renderNav(); renderPane(); };
+  const tl = el("div", "timeline");
+  const prev = el("button", "chip", "◀"), next = el("button", "chip", "▶"), slider = el("input");
+  prev.disabled = idx <= 0; next.disabled = idx >= ms.length - 1;
+  prev.onclick = () => setMoment(idx - 1); next.onclick = () => setMoment(idx + 1);
+  Object.assign(slider, { type: "range", min: 0, max: Math.max(0, ms.length - 1), value: idx });
+  slider.oninput = () => setMoment(+slider.value);
+  const label = el("div", "mono gold now", momentLabel(ui.moment));
+  if (ms.some(m => novel.has("m:" + m.id))) label.append(el("span", "pip"));
+  tl.append(prev, label, next, slider);
+
+  const svg = svgEl("svg", { viewBox: "0 0 100 60", class: "map" });
+  svg.append(svgEl("rect", { x: 0, y: 0, width: 100, height: 60, fill: "url(#grid)" }));
+  const defs = svgEl("defs"), pat = svgEl("pattern", { id: "grid", width: 5, height: 5, patternUnits: "userSpaceOnUse" });
+  pat.append(svgEl("path", { d: "M5 0H0V5", fill: "none", stroke: "rgba(212,162,76,.08)", "stroke-width": .2 })); defs.append(pat); svg.prepend(defs);
+  for (const p of places()) {
+    const n = await hint(ui.moment, p.id), done = sceneAt(ui.moment, p.id), search = nodes("search").find(x => x.place === p.id);
+    const g = svgEl("g", { class: "room" + (ui.room === p.id ? " on" : "") + (novel.has("l:" + p.id) ? " new" : "") + (n && !done ? " live" : "") + (done ? " done" : "") });
+    g.append(svgEl("rect", { x: p.x, y: p.y, width: p.w, height: p.h, rx: 1.2 }));
+    const t = svgEl("text", { x: p.x + 1.2, y: p.y + 3 }); t.textContent = p.label; g.append(t);
+    const badge = svgEl("text", { x: p.x + p.w - 1.2, y: p.y + p.h - 1.4, "text-anchor": "end", class: "badge" });
+    badge.textContent = `${search && search.objects.some((_, i) => !st.done.includes(`n:${search.id}#${i}`)) ? "⌕ " : ""}${done ? "✓" : n ? "◉".repeat(Math.min(n, 6)) + (n > 6 ? "+" : "") : ""}`;
+    g.append(badge);
+    g.onclick = () => { ui.room = p.id; novel.delete("l:" + p.id); ui.pick.clear(); sfx("tick"); renderNav(); renderPane(); };
+    svg.append(g);
+  }
+  box.append(tl, svg, el("p", "muted legend", "◉ silhouette captée · ✓ reconstituée · ⌕ à fouiller"));
+  if (ui.room && places().some(p => p.id === ui.room)) box.append(await roomPanel(ui.room));
+  else box.append(el("p", "muted", "Touchez une pièce pour la fouiller ou reconstituer ce qui s'y est passé."));
+}
+async function roomPanel(pid) {
+  const panel = el("div", "room-panel"), n = await hint(ui.moment, pid), done = sceneAt(ui.moment, pid);
+  panel.append(el("h3", "", placeLabel(pid)));
+  const search = nodes("search").find(x => x.place === pid);
+  if (search) { const b = el("button", "btn ghost", "⌕ Fouiller la pièce"); b.onclick = () => openSearch(search.id); panel.append(b); }
+  if (done) { const b = el("button", "btn", "Revoir la reconstitution"); b.onclick = () => showScene(done.id); panel.append(el("p", "mono gold", `${momentLabel(ui.moment)} · reconstituée`), b); return panel; }
+  if (!n) { panel.append(el("p", "muted", `${momentLabel(ui.moment)} : aucune activité enregistrée ici.`)); return panel; }
+  panel.append(el("p", "", `${momentLabel(ui.moment)} : les capteurs ont enregistré ${n} silhouette${n > 1 ? "s" : ""}. Qui était là ?`));
+  const q = el("input", "filter"); q.placeholder = "Filtrer les dossiers…";
+  const chips = el("div", "chips"), count = el("span", "mono gold", ""), msg = el("p", "msg");
+  const upd = () => { count.textContent = `${ui.pick.size} / ${n}`; };
   st.known.slice().sort((a, b) => a - b).forEach(p => {
-    const done = st.ok.includes(p), row = el("div", "person" + (done ? " ok" : ""));
+    const c = el("button", "chip person-chip" + (ui.pick.has(p) ? " on" : "") + (novel.has("p:" + p) ? " new" : ""));
+    c.append(portrait(p, "tiny"), nameEl("span", "", p)); c.dataset.q = norm(`${p} ${who(p)}`);
+    c.onclick = () => { novel.delete("p:" + p); ui.pick.has(p) ? ui.pick.delete(p) : ui.pick.add(p); c.classList.toggle("on"); c.classList.remove("new"); sfx("tick"); upd(); };
+    chips.append(c);
+  });
+  q.oninput = () => { const v = norm(q.value); chips.querySelectorAll(".chip").forEach(c => { c.hidden = v && !c.classList.contains("on") && !c.dataset.q.includes(v); }); };
+  const rebuild = el("button", "btn", "Reconstituer");
+  rebuild.onclick = async () => {
+    const people = [...ui.pick].sort((a, b) => a - b), k = await keyOf("scene", [ui.moment, pid, people.join(",")]), s = await open(S.scenes, k);
+    if (!s) { sfx("fail"); msg.textContent = ui.pick.size === n ? "Les signatures ne correspondent pas : quelqu'un n'est pas le bon." : `Il faut exactement ${n} personne${n > 1 ? "s" : ""}.`; msg.className = "msg warn"; return; }
+    const r = rebuild.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, 60); sfx("light");
+    ui.pick.clear();
+    await discover(async () => { st.skeys.push(hex(k)); R[s.id] = s; add(st.known, s.people); await applyUnlock("r:" + s.id, s.unlock); });
+    showScene(s.id);
+  };
+  const row = el("div", "row"); row.append(rebuild, count); upd();
+  panel.append(q, chips, row, msg);
+  return panel;
+}
+
+// ---- Dossiers: identity sheets ----
+function renderDossiers(box) {
+  const need = Math.min(3, Object.keys(S.people).length - st.ok.length), total = Object.keys(S.people).length;
+  const q = el("input", "filter"); q.placeholder = "Filtrer (numéro, surnom, nom)…";
+  const check = el("button", "btn", "Vérifier les fiches"), grid = el("div", "cards");
+  box.append(el("h3", "", "Dossiers"), el("p", "muted", `Renommez chacun à votre guise, puis complétez ${S.fields.map(f => f.label.toLowerCase()).join(" + ")}. Les fiches justes se confirment par ${need || 3}. Identifiés : ${st.ok.length} / ${total}.`), q, grid, check);
+  st.known.slice().sort((a, b) => a - b).forEach(p => {
+    const done = st.ok.includes(p), card = el("div", "card-p" + (done ? " ok" : "") + (novel.has("p:" + p) ? " new" : ""));
     const g = st.guess[p] || (st.guess[p] = []);
-    const label = el("input"); label.placeholder = S.aka?.[p] || "surnom"; label.value = st.labels[p] || "";
+    const top = el("div", "card-top"), label = el("input");
+    label.placeholder = S.people[p]?.aka || "surnom"; label.value = st.labels[p] || "";
     label.oninput = () => { st.labels[p] = label.value.trim(); save(); refreshNames(); };
-    label.onchange = () => renderList();
-    const go = el("button", "chip", "scènes"); go.title = "Voir ses scènes"; go.onclick = () => follow({ a: String(p) });
+    top.append(portrait(p), el("span", "mono red", `#${p}`), label);
     const fields = el("div", "fields");
     S.fields.forEach((f, k) => {
       const s = el("select"); s.append(el("option", "", `— ${f.label.toLowerCase()} —`)); s.firstChild.value = "";
@@ -242,15 +398,17 @@ function renderPeople() {
         groups[grp].append(opt);
       });
       s.value = g[k] ?? ""; s.disabled = done;
-      s.onchange = () => { g[k] = s.value === "" ? undefined : +s.value; save(); };
+      s.onchange = () => { g[k] = s.value === "" ? null : +s.value; save(); };
       fields.append(s);
     });
-    row.append(el("span", "mono red", `#${p}`), label, go, fields);
-    row.dataset.q = norm(`${p} ${who(p)} ${S.aka?.[p] || ""}`);
-    list.append(row);
+    const acts = el("div", "acts"), talk = talkOf(p);
+    if (talk) { const b = el("button", "chip" + (novel.has("n:" + talk.id) ? " new" : ""), "Interroger"); b.onclick = () => { novel.delete("n:" + talk.id); novel.delete("p:" + p); openTalk(talk.id); renderNav(); }; acts.append(b); }
+    const sc = el("button", "chip", "Scènes"); sc.onclick = () => follow({ a: String(p) }); acts.append(sc);
+    card.dataset.q = norm(`${p} ${who(p)} ${S.people[p]?.aka || ""}`);
+    card.onpointerenter = () => { if (novel.delete("p:" + p)) { card.classList.remove("new"); renderNav(); } };
+    card.append(top, fields, acts); grid.append(card);
   });
-  q.oninput = () => { const n = norm(q.value); list.querySelectorAll(".person").forEach(r => { r.hidden = n && !r.dataset.q.includes(n); }); };
-  const check = el("button", "btn", "Vérifier les fiches");
+  q.oninput = () => { const v = norm(q.value); grid.querySelectorAll(".card-p").forEach(c => { c.hidden = v && !c.dataset.q.includes(v); }); };
   check.onclick = async () => {
     const good = [];
     for (const p of st.known) {
@@ -259,66 +417,42 @@ function renderPeople() {
       if (S.who.includes(hex(await sha(`who|${p}|${g.slice(0, S.fields.length).join("|")}`)).slice(0, 16))) good.push(p);
     }
     if (need && good.length >= need) {
-      st.ok.push(...good); sfx("confirm"); const r = check.getBoundingClientRect(); burst(r.left + r.width / 2, r.top, 50); save(); renderAll(); if (current) show(current);
-      say(`${good.length} fiche${good.length > 1 ? "s" : ""} confirmée${good.length > 1 ? "s" : ""} !`, "good");
-      box.querySelectorAll(".person.ok").forEach(r => { if (good.includes(+r.querySelector(".red").textContent.slice(1))) r.classList.add("flash"); });
-    } else sfx("fail"), say(`Pas encore : il faut au moins ${need} fiche${need > 1 ? "s" : ""} entièrement juste${need > 1 ? "s" : ""} (non confirmées) en même temps.`, "warn");
+      st.ok.push(...good); save(); sfx("confirm");
+      const r = check.getBoundingClientRect(); burst(r.left + r.width / 2, r.top, 50);
+      toast([`${good.length} fiche${good.length > 1 ? "s" : ""} confirmée${good.length > 1 ? "s" : ""}`]); refreshNames(); renderPane();
+    } else { sfx("fail"); toast([`Pas encore : il faut ${need} fiche${need > 1 ? "s" : ""} entièrement juste${need > 1 ? "s" : ""} à la fois.`]); }
   };
-  box.append(check);
 }
 
-function renderNotebook() {
-  const box = $("tab-notes");
-  const area = el("textarea"); area.placeholder = "Vos notes…"; area.value = st.notes;
-  area.oninput = () => { st.notes = area.value; save(); };
-  box.replaceChildren(area, el("h4", "", "Répliques épinglées"));
-  st.pins.forEach((pin, k) => {
-    const s = scenes[pin.id]; if (!s) return;
-    const [sp, text] = s.lines[pin.i];
-    const row = el("div", "pin");
-    const go = el("button", "item", `${who(sp) ? who(sp) + " : " : ""}${text}`); go.onclick = () => show(pin.id, pin.i);
-    const del = el("button", "chip", "✕"); del.onclick = () => { st.pins.splice(k, 1); save(); renderNotebook(); };
-    row.append(go, del); box.append(row);
-  });
+// ---- Evidence, puzzles, notebook, conclusion ----
+function renderEvidence(box) {
+  box.append(el("h3", "", "Preuves"));
+  nodes("evidence").forEach(n => box.append(item(n.title, () => openEvidence(n.id), "n:" + n.id, ui.view?.id === n.id)));
 }
-
-function renderSearch() {
-  const box = $("tab-search"), q = el("input"), res = el("div");
-  q.placeholder = "Chercher dans les scènes…";
-  q.oninput = () => {
-    const n = norm(q.value); res.replaceChildren();
-    if (n.length < 2) return;
-    sortedScenes().forEach(s => s.lines.forEach(([sp, text], i) => {
-      if (!norm(text).includes(n) && !norm(who(sp)).includes(n)) return;
-      const b = el("button", "item"); b.append(el("span", "mono gold", momentLabel(s.moment) + " "), document.createTextNode(`${who(sp) ? who(sp) + " : " : ""}${text}`));
-      b.onclick = () => show(s.id, i); res.append(b);
-    }));
-  };
-  box.replaceChildren(q, res);
-}
-
-function renderPuzzles() {
-  const box = $("tab-puzzles");
-  box.replaceChildren(st.puzzles.length ? "" : el("p", "muted", "Aucune énigme pour l'instant."));
-  st.puzzles.forEach(z => {
-    const done = st.solved.some(r => r.id === z.id), card = el("div", "puzzle" + (done ? " ok" : ""));
+function renderPuzzles(box) {
+  box.append(el("h3", "", "Énigmes"));
+  nodes("puzzle").forEach(z => {
+    novel.delete("n:" + z.id);
+    const done = st.solved.find(r => r.id === z.id), card = el("div", "puzzle" + (done ? " ok" : ""));
     card.append(el("h4", "", z.title), el("p", "", z.prompt));
-    if (done) card.append(el("p", "gold", st.solved.find(r => r.id === z.id).text));
-    else if (z.type === "game") { const b = el("button", "btn", "Jouer"); b.onclick = () => playGame(z); card.append(b); }
+    if (done) card.append(el("p", "gold", done.text));
+    else if (z.kind === "game") { const b = el("button", "btn", "Jouer"); b.onclick = () => playGame(z); card.append(b); }
     else {
       const f = el("form", "row"), inp = el("input"); inp.placeholder = "Réponse";
       f.append(inp, el("button", "btn", "Essayer"));
-      f.onsubmit = async e => { e.preventDefault(); if (!(await solve(z, norm(inp.value)))) say("Ce n'est pas ça.", "warn"); };
+      f.onsubmit = async e => { e.preventDefault(); if (!(await solve(z, norm(inp.value)))) { sfx("fail"); toast(["Ce n'est pas ça."]); } };
       card.append(f);
     }
     box.append(card);
   });
+  setTimeout(renderNav);
 }
 async function solve(z, answer) {
   const r = await open(S.answers, await keyOf("puz", [z.id, answer]));
   if (!r) return false;
-  const before = snap(); sfx("solve"); burst(innerWidth / 2, innerHeight / 2, 80);
-  st.solved.push({ id: z.id, ...r }); applyUnlock(r.unlock); save(); renderAll(); say("Énigme résolue !" + discovered(before), "good"); renderLantern(); return true;
+  sfx("solve"); burst(innerWidth / 2, innerHeight / 2, 80);
+  await discover(async () => { st.solved.push({ id: z.id, text: r.text }); await applyUnlock("z:" + z.id, r.unlock); });
+  return true;
 }
 function playGame(z) {
   const g = PUZZLES.find(p => p.id === z.game), d = $("minigame");
@@ -326,78 +460,86 @@ function playGame(z) {
   g.init($("mg-board"), { win: () => { $("mg-status").textContent = "Réussi !"; solve(z, "win"); }, status: t => { $("mg-status").textContent = t; } });
   d.showModal();
 }
-
-function renderFinal() {
-  const box = $("tab-final"), f = S.final;
-  if (st.ending) return box.replaceChildren(el("p", "gold", "Mystère résolu ✦"), (() => { const b = el("button", "btn", "Relire le dénouement"); b.onclick = () => showEnding(); return b; })());
-  const form = el("form", "final"), parts = f.text.split(/\{(\d+)\}/), picks = [];
-  parts.forEach((p, i) => {
+function renderNotebook(box) {
+  const area = el("textarea"); area.placeholder = "Vos notes…"; area.value = st.notes;
+  area.oninput = () => { st.notes = area.value; save(); };
+  const q = el("input", "filter"), res = el("div");
+  q.placeholder = "Chercher dans tout ce qui a été lu…";
+  q.oninput = () => {
+    const v = norm(q.value); res.replaceChildren();
+    if (v.length < 2) return;
+    const hit = (label, text, onclick) => { if (norm(text).includes(v)) res.append(item(label, onclick, null, false, " " + text.slice(0, 140))); };
+    sortedScenes().forEach(s => s.lines.forEach(([sp, t], i) => hit(`${momentLabel(s.moment)} · ${who(sp) || "—"} :`, t, () => showScene(s.id, i))));
+    nodes("talk").forEach(n => st.asked.filter(a => a.startsWith(n.id + "#")).forEach(a => n.topics[+a.split("#")[1]].lines.forEach(([sp, t]) => hit(`${n.title} · ${who(sp) || "—"} :`, t, () => openTalk(n.id)))));
+    nodes("chapter").forEach(n => n.text.forEach(t => hit(n.title, t, () => openChapter(n.id))));
+    nodes("evidence").forEach(n => n.text.forEach(t => hit(n.title, t, () => openEvidence(n.id))));
+  };
+  box.append(el("h3", "", "Carnet"), area, el("h4", "", "Rechercher"), q, res, el("h4", "", "Répliques épinglées"));
+  st.pins.forEach((pin, k) => {
+    const row = el("div", "pin");
+    const goTo = item(`${who(pin.sp) ? who(pin.sp) + " : " : ""}${pin.t}`, () => openRef(pin.ref));
+    const del = el("button", "chip", "✕"); del.onclick = () => { st.pins.splice(k, 1); save(); renderPane(); };
+    row.append(goTo, del); box.append(row);
+  });
+}
+function renderFinal(box) {
+  const f = S.final;
+  box.append(el("h3", "", "Conclusion"));
+  if (st.ending) { const b = el("button", "btn", "Relire le dénouement"); b.onclick = showEnding; return box.append(el("p", "gold", "Affaire résolue ✦"), b); }
+  const form = el("form", "final"), picks = [];
+  f.text.split(/\{(\d+)\}/).forEach((p, i) => {
     if (i % 2 === 0) return form.append(document.createTextNode(p));
-    const s = el("select"); s.append(el("option", "", "…"));
+    const s = el("select"); s.append(el("option", "", "…")); s.firstChild.value = "";
     f.options[+p].forEach((o, k) => { const opt = el("option", "", o); opt.value = k; s.append(opt); });
     picks[+p] = s; form.append(s);
   });
-  form.append(el("br"), el("button", "btn", "Proposer ma solution"));
+  form.append(el("br"), el("button", "btn", "Présenter ma conclusion"));
   form.onsubmit = async e => {
     e.preventDefault();
-    if (picks.some(s => s.value === "")) return say("Complétez chaque blanc.", "warn");
+    if (picks.some(s => s.value === "")) return toast(["Complétez chaque blanc."]);
     const end = await open(f.ending, await keyOf("fin", picks.map(s => s.value)));
-    if (!end) return say("La lanterne doute… quelque chose ne colle pas.", "warn");
-    st.ending = end; save(); renderAll(); showEnding(); say("Mystère résolu !", "good");
+    if (!end) { sfx("fail"); return toast(["Quelque chose ne colle pas encore."]); }
+    st.ending = end; save(); sfx("solve"); burst(innerWidth / 2, innerHeight / 2, 120); renderNav(); renderPane(); showEnding();
   };
-  box.replaceChildren(el("p", "muted", "Quand vous pensez avoir compris, complétez le récit."), form);
+  box.append(el("p", "muted", "Quand vous pensez avoir compris, complétez le rapport."), form);
 }
-function showEnding() {
-  current = null;
-  const v = $("scene"), e = st.ending;
-  v.replaceChildren(el("h2", "gold", e.title));
-  e.lines.forEach(t => v.append(el("p", "line narr", t)));
-}
-
-// Tabs appear once useful: puzzles after the first one is found, the ending once the story opens it
-function renderTabs() {
-  const show = { puzzles: st.puzzles.length > 0, final: st.finalOpen || !!st.ending };
-  for (const [t, on] of Object.entries(show)) {
-    $("tab-btn-" + t).hidden = !on;
-    if (!on && $("tab-" + t).classList.contains("on")) document.querySelector('.tabs button[data-tab="scenes"]').click();
-  }
-}
-
-function renderAll() { renderTabs(); renderLantern(); renderList(); renderPeople(); renderNotebook(); renderPuzzles(); renderFinal(); }
+function showEnding() { ui.view = null; reader("DÉNOUEMENT", st.ending.title, paras(st.ending.lines, "prose book")); }
 
 // ---- Save menu ----
 $("export").onclick = () => {
   const a = el("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(st)], { type: "application/json" }));
-  a.download = "lanterne-sauvegarde.json"; a.click();
+  a.download = "enquete-sauvegarde.json"; a.click();
 };
 $("import").onchange = async e => {
-  try { await load(JSON.parse(await e.target.files[0].text())); save(); renderAll(); say("Sauvegarde chargée.", "good"); }
-  catch (err) { say("Fichier de sauvegarde illisible.", "warn"); }
+  try { await load(JSON.parse(await e.target.files[0].text())); save(); renderNav(); renderPane(); toast(["Sauvegarde chargée."]); }
+  catch (err) { toast(["Fichier de sauvegarde illisible."]); }
 };
 $("reset").onclick = async () => {
   if (!confirm("Effacer toute la progression ?")) return;
-  await load(fresh()); await newGame(); renderAll(); $("scene").replaceChildren(); say("Nouvelle partie.");
+  await newGame(); ui.view = null; ui.room = null; renderNav(); renderPane(); $("reader").replaceChildren(); boot();
 };
 
-// ---- Tabs, intro, start ----
-document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
-  document.querySelectorAll(".tabs button, .tab").forEach(x => x.classList.remove("on"));
-  b.classList.add("on"); $("tab-" + b.dataset.tab).classList.add("on");
-});
-$("light").onclick = light;
-
-async function newGame() { for (const h of S.start) await unlockScene(unhex(h), true); save(); }
+// ---- Boot: typed intro, then the first chapter ----
+async function boot() {
+  const box = $("boot-text"), d = $("boot"), btn = $("boot-go");
+  box.replaceChildren(); btn.hidden = true; d.showModal();
+  let skip = false; d.onclick = () => { skip = true; };
+  for (const t of S.intro) {
+    const p = el("p", "typed"); box.append(p);
+    for (let i = 0; i <= t.length; i++) { p.textContent = t.slice(0, i); if (!skip && i % 2 === 0) await new Promise(r => setTimeout(r, 14)); }
+  }
+  btn.hidden = false;
+  await new Promise(r => d.addEventListener("close", r, { once: true }));
+  st.seenIntro = true; save();
+  const first = nodes("chapter")[0]; if (first) openChapter(first.id);
+}
 
 (async () => {
   document.title = S.title; $("title").textContent = S.title;
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(SAVE)); } catch (e) { /* no save */ }
   if (saved) await load(saved); else await newGame();
-  renderAll(); renderSearch();
-  const first = sortedScenes()[0]; if (first) show(first.id);
-  if (!st.seenIntro) {
-    $("intro-text").replaceChildren(...S.intro.map(p => el("p", "", p)));
-    $("intro").showModal();
-    $("intro").addEventListener("close", () => { st.seenIntro = true; save(); }, { once: true });
-  }
+  renderNav(); renderPane();
+  if (!st.seenIntro) boot();
+  else { const last = nodes("chapter").at(-1); if (last) reader("CHAPITRE", last.title, paras(last.text, "prose book")); }
 })();
