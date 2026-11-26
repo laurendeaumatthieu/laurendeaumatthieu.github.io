@@ -75,7 +75,7 @@ renderToggles();
 
 // Sky: slow red and gold dust drifting over faint stars, plus spark bursts
 const sky = document.getElementById("sky"), g = sky.getContext("2d");
-let W, H, sparks = [];
+let W, H, sparks = [], sat = null;
 const fit = () => { const d = devicePixelRatio || 1; W = innerWidth; H = innerHeight; sky.width = W * d; sky.height = H * d; g.setTransform(d, 0, 0, d, 0, 0); };
 addEventListener("resize", fit); fit();
 const stars = [...Array(140)].map(() => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.2 + 0.2, p: Math.random() * 6 }));
@@ -97,6 +97,17 @@ function frame(t) {
     g.fillStyle = d.gold ? "rgba(212, 162, 76, .35)" : "rgba(229, 56, 59, .3)";
     g.beginPath(); g.arc(d.x * W, d.y * H, d.r, 0, 7); g.fill();
   });
+  // Phobos crossing the sky every few minutes, and an occasional orbiting satellite
+  const ph = ((t / 240000) % 1) * 1.4 - 0.2, px = ph * W, py = H * (0.32 - 0.18 * Math.sin(ph * Math.PI));
+  const halo = g.createRadialGradient(px, py, 0, px, py, 26); halo.addColorStop(0, "rgba(220, 190, 160, .18)"); halo.addColorStop(1, "rgba(220, 190, 160, 0)");
+  g.fillStyle = halo; g.beginPath(); g.arc(px, py, 26, 0, 7); g.fill();
+  g.fillStyle = "rgba(200, 170, 140, .55)"; g.beginPath(); g.ellipse(px, py, 6, 4.5, 0.4, 0, 7); g.fill();
+  if (!sat && Math.random() < 0.0015) sat = { x: -10, y: Math.random() * H * 0.5, v: 1.2 + Math.random() };
+  if (sat) {
+    sat.x += sat.v; sat.y += sat.v * 0.12;
+    g.fillStyle = `rgba(111, 214, 232, ${0.5 + 0.5 * Math.sin(t * 0.02)})`; g.fillRect(sat.x, sat.y, 2, 2);
+    if (sat.x > W + 10) sat = null;
+  }
   sparks = sparks.filter(p => (p.life -= 0.018) > 0);
   sparks.forEach(p => {
     p.x += p.vx; p.y += p.vy; p.vy += 0.06; p.vx *= 0.98;

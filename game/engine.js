@@ -223,7 +223,11 @@ function follow(f) { Object.assign(ui.flt, { moment: "", place: "", a: "", b: ""
 
 async function openChapter(id) {
   const n = N[id]; ui.view = { id }; novel.delete("n:" + id);
-  reader("CHAPITRE", n.title, paras(n.text, "prose book"));
+  const order = [];
+  if (id === nodes("chapter")[0]?.id && S.intro?.length) {
+    const m = el("div", "mission"); m.append(el("div", "mono kicker", "ORDRE DE MISSION · transmission Terre"), paras(S.intro)); order.push(m);
+  }
+  reader("CHAPITRE", n.title, ...order, paras(n.text, "prose book"));
   await discover(() => applyUnlock("n:" + id, n.unlock));
 }
 function showScene(id, hit = -1) {
@@ -519,20 +523,32 @@ $("reset").onclick = async () => {
   await newGame(); ui.view = null; ui.room = null; renderNav(); renderPane(); $("reader").replaceChildren(); boot();
 };
 
-// ---- Boot: typed intro, then the first chapter ----
+// ---- Boot: short system log and a start button; the intro becomes the mission order of the first chapter ----
+const BOOT_LOG = ["liaison orbitale ........ ok", "relais Terre ............ latence 12 min", "capteurs de la colonie .. archives montées",
+  "habilitation ............ enquêteur accrédité", "ouverture du dossier ...."];
 async function boot() {
-  const box = $("boot-text"), d = $("boot"), btn = $("boot-go");
-  box.replaceChildren(); btn.hidden = true; d.showModal();
+  const log = $("boot-log"), d = $("boot"), btn = $("boot-go");
+  log.replaceChildren(); $("boot-title").textContent = S.title; d.showModal();
   let skip = false; d.onclick = () => { skip = true; };
-  for (const t of S.intro) {
-    const p = el("p", "typed"); box.append(p);
-    for (let i = 0; i <= t.length; i++) { p.textContent = t.slice(0, i); if (!skip && i % 2 === 0) await new Promise(r => setTimeout(r, 14)); }
+  for (const t of BOOT_LOG) {
+    log.append(el("div", "", "> " + t));
+    sfx("tick");
+    if (!skip) await new Promise(r => setTimeout(r, 180));
   }
-  btn.hidden = false;
+  btn.focus();
   await new Promise(r => d.addEventListener("close", r, { once: true }));
-  st.seenIntro = true; save();
+  st.seenIntro = true; save(); sfx("discover");
   const first = nodes("chapter")[0]; if (first) openChapter(first.id);
 }
+
+// ---- Telemetry: real Mars time (Mars Sol Date and Coordinated Mars Time) and habitat readings ----
+function telemetry() {
+  const msd = (Date.now() / 864e5 + 2440587.5 + 69.184 / 86400 - 2405522.0028779) / 1.0274912517;
+  const h = (msd % 1) * 24, pad = x => String(Math.floor(x)).padStart(2, "0");
+  const jit = (v, d) => (v + (Math.random() - .5) * d).toFixed(1);
+  $("telemetry").textContent = `MSD ${Math.floor(msd)} · ${pad(h)}:${pad((h % 1) * 60)} MTC · O₂ ${jit(20.9, .2)} % · ${jit(101.3, .4)} kPa · ext. ${jit(-63, 4)} °C`;
+}
+telemetry(); setInterval(telemetry, 3000);
 
 (async () => {
   document.title = S.title; $("title").textContent = S.title;
