@@ -12,14 +12,14 @@ body.game { --cyan: #6fd6e8; --amber: #f0b45a; --glow: rgba(240, 180, 90, .35); 
   border-bottom: 1px solid rgba(240, 180, 90, .2); background: rgba(8, 6, 6, .85); backdrop-filter: blur(8px); }
 .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .brand h1 { margin: 0; font: 700 18px "JetBrains Mono", monospace; color: var(--amber); text-shadow: 0 0 12px var(--glow); white-space: nowrap; }
-.brand .sub { font-size: 11px; white-space: nowrap; }
 .led { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 8px var(--red); align-self: center; animation: blink 2.4s infinite; }
-.sections { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+.sections { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 0 1 auto; min-width: 0; }
 .sections button { position: relative; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
   padding: 6px 10px; cursor: pointer; font: 600 12px "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
 .sections button:hover { color: var(--amber); }
 .sections button.on { color: var(--amber); border-color: var(--amber); text-shadow: 0 0 10px var(--glow); }
 .pip { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px var(--red); vertical-align: middle; animation: blink 1.2s infinite; }
+.bar { position: relative; z-index: 65; }
 .menu { position: relative; margin-left: auto; }
 .burger { display: grid; gap: 4px; width: 34px; height: 30px; place-content: center; background: none; border: 1px solid rgba(240, 180, 90, .3); border-radius: 6px; cursor: pointer; }
 .burger span { display: block; width: 16px; height: 2px; background: var(--amber); transition: transform .25s, opacity .25s; }
@@ -27,7 +27,7 @@ body.game { --cyan: #6fd6e8; --amber: #f0b45a; --glow: rgba(240, 180, 90, .35); 
 .burger.open span:nth-child(2) { opacity: 0; }
 .burger.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 .tools { position: absolute; right: 0; top: calc(100% + 8px); z-index: 70; display: grid; gap: 2px; min-width: 220px; padding: 8px;
-  background: rgba(10, 8, 7, .97); border: 1px solid rgba(240, 180, 90, .35); border-radius: 8px; box-shadow: 0 0 30px rgba(0, 0, 0, .6), 0 0 18px var(--glow); animation: rise-in .2s ease-out; }
+  background: #0b0908; border: 1px solid rgba(240, 180, 90, .45); border-radius: 8px; box-shadow: 0 0 30px rgba(0, 0, 0, .6), 0 0 18px var(--glow); animation: rise-in .2s ease-out; }
 .tools button, .tools label, .tools a { text-align: left; padding: 8px 10px; border-radius: 6px; text-decoration: none; }
 .tools button:hover, .tools label:hover, .tools a:hover { background: rgba(240, 180, 90, .08); }
 .tools button, .tools label, .tools a { background: none; border: 0; cursor: pointer; color: var(--muted); font: 12px "JetBrains Mono", monospace; }
@@ -166,14 +166,12 @@ body.game { --cyan: #6fd6e8; --amber: #f0b45a; --glow: rgba(240, 180, 90, .35); 
 .mission p { margin: 6px 0; }
 
 /* Science-fiction dressing: telemetry, HUD corners, scan sweep, title glitch */
-.strip { display: flex; align-items: center; gap: 14px; padding: 4px clamp(12px, 3vw, 28px); font-size: 11px; min-width: 0;
-  border-bottom: 1px solid rgba(111, 214, 232, .15); background: linear-gradient(90deg, rgba(111, 214, 232, .06), rgba(8, 6, 6, .8) 40%); }
-.stats { display: flex; gap: 4px; flex-shrink: 0; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
-.stat { display: flex; gap: 6px; align-items: baseline; padding: 3px 8px; background: none; border: 1px solid rgba(111, 214, 232, .2); border-radius: 4px; cursor: pointer; color: var(--muted); font: inherit; white-space: nowrap; }
+.stats { display: flex; gap: 3px; flex-shrink: 0; }
+.stat { display: flex; gap: 4px; align-items: baseline; padding: 2px 6px; background: none; border: 1px solid rgba(111, 214, 232, .2); border-radius: 4px; cursor: pointer; color: var(--muted); font: 11px "JetBrains Mono", monospace; white-space: nowrap; }
 .stat:hover { border-color: var(--cyan); color: var(--cyan); }
-.stat .k { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
+.stat .k { color: var(--cyan); opacity: .7; }
 .stat .v { color: var(--cyan); font-weight: 700; }
-.ticker { flex: 1; min-width: 0; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+.ticker { flex: 1; min-width: 60px; font-size: 11px; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
 #ticker-text { display: inline-block; white-space: nowrap; color: var(--amber); opacity: .85; animation: ticker 40s linear infinite; }
 @keyframes ticker { to { transform: translateX(-50%); } }
 .telemetry { font-size: 10px; color: var(--cyan); opacity: .7; white-space: nowrap; letter-spacing: .5px; }
@@ -207,8 +205,8 @@ dialog[open] { animation: pop .3s ease-out; }
 @keyframes pop { from { opacity: 0; transform: scale(.95); } }
 @media (prefers-reduced-motion: reduce) { .game *, .game dialog, .crt, body.game::after { animation: none !important; } }
 
-@media (max-width: 1250px) { .telemetry { display: none; } }
-@media (max-width: 700px) { .ticker { display: none; } }
+@media (max-width: 1700px) { .telemetry { display: none; } }
+@media (max-width: 1200px) { .ticker { display: none; } .stats { margin-left: auto; } }
 
 /* Map: unreached places show as a dashed signal; radar sweep over the map */
 .room.signal rect { fill: rgba(111, 214, 232, .04); stroke: var(--cyan); stroke-dasharray: 1 .8; stroke-width: .3; animation: pulse 1.6s ease-in-out infinite; }
@@ -246,7 +244,8 @@ canvas.rover { display: block; width: min(600px, 100%); aspect-ratio: 3 / 2; bor
   body.game { height: auto; overflow: visible; }
   .layout { grid-template-columns: minmax(0, 1fr); }
   .pane, .reader { overflow: visible; }
-  .bar { position: sticky; top: 0; z-index: 40; }
-  .brand .sub, .telemetry { display: none; }
+  .bar { position: sticky; top: 0; z-index: 65; }
+  .telemetry { display: none; }
+  .stats { order: 4; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; margin-left: 0; }
   .sections { order: 3; flex-basis: 100%; }
 }

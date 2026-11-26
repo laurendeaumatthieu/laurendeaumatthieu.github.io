@@ -176,19 +176,20 @@ const NEWS = {
   enigmes: () => nodes("puzzle").some(n => novel.has("n:" + n.id)),
 };
 const SHOWN = { enigmes: () => nodes("puzzle").length > 0, preuves: () => nodes("evidence").length > 0, conclusion: () => st.finalOpen || !!st.ending };
-// Investigation strip under the header: progress counters (each opens its section) and the latest discoveries
+// Investigation counters in the header: progress counters (each opens its section) and the latest discoveries
 function renderStrip() {
   const signals = places().filter(p => !reached(p.id)).length;
   const stats = [
-    ["dossiers", "Fiches", `${st.ok.length}/${Object.keys(S.people).length}`],
-    ["journal", "Reconstitutions", `${Object.keys(R).length}/${Object.keys(S.scenes).length}`],
-    ["carte", "Lieux", `${places().length - signals}` + (signals ? ` +${signals}◌` : "")],
-    ["carte", "Moments", `${moments().length}`],
-    ["preuves", "Preuves", `${nodes("evidence").length}`],
-    ["enigmes", "Énigmes", `${st.solved.length}/${Object.keys(S.answers).length}`],
+    ["dossiers", "▣", "Fiches confirmées", `${st.ok.length}/${Object.keys(S.people).length}`],
+    ["journal", "◉", "Reconstitutions", `${Object.keys(R).length}/${Object.keys(S.scenes).length}`],
+    ["carte", "⌖", "Lieux atteints" + (signals ? ` (+${signals} signal${signals > 1 ? "s" : ""} à rejoindre)` : ""), `${places().length - signals}` + (signals ? `+${signals}` : "")],
+    ["carte", "◷", "Moments", `${moments().length}`],
+    ["preuves", "▤", "Preuves", `${nodes("evidence").length}`],
+    ["enigmes", "✦", "Énigmes résolues", `${st.solved.length}/${Object.keys(S.answers).length}`],
   ];
-  $("stats").replaceChildren(...stats.map(([sec, label, v]) => {
-    const b = el("button", "stat"); b.append(el("span", "k", label), el("span", "v", v));
+  $("stats").replaceChildren(...stats.map(([sec, icon, label, v]) => {
+    const b = el("button", "stat"); b.title = label; b.setAttribute("aria-label", `${label} : ${v}`);
+    b.append(el("span", "k", icon), el("span", "v", v));
     b.onclick = () => go(sec); return b;
   }));
   const feed = st.feed.length ? st.feed : ["En attente de premières observations"];
