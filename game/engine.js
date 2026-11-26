@@ -4,7 +4,7 @@
 const S = window.STORY;
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
-const SAVE = "enquete-save-v3";
+const SAVE = "enquete-save-v4";
 
 // ---- Crypto (must match tools/build_story.py) ----
 // Pure JS SHA-256: WebCrypto is missing on plain-HTTP pages
@@ -525,7 +525,7 @@ $("reset").onclick = async () => {
 
 // ---- Boot: short system log and a start button; the intro becomes the mission order of the first chapter ----
 const BOOT_LOG = ["liaison orbitale ........ ok", "relais Terre ............ latence 12 min", "capteurs de la colonie .. archives montées",
-  "habilitation ............ enquêteur accrédité", "ouverture du dossier ...."];
+  "affectation ............. lieutenant de police", "ouverture de session ...."];
 async function boot() {
   const log = $("boot-log"), d = $("boot"), btn = $("boot-go");
   log.replaceChildren(); $("boot-title").textContent = S.title; d.showModal();
