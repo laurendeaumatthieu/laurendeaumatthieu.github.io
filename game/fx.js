@@ -97,6 +97,35 @@ function frame(t) {
     g.fillStyle = d.gold ? "rgba(212, 162, 76, .35)" : "rgba(229, 56, 59, .3)";
     g.beginPath(); g.arc(d.x * W, d.y * H, d.r, 0, 7); g.fill();
   });
+  // Horizon: dunes, colony domes and terraforming towers venting slow plumes, with blinking beacons
+  const hy = H - Math.min(90, H * 0.12);
+  g.fillStyle = "rgba(60, 18, 10, .55)"; g.beginPath(); g.moveTo(0, H);
+  for (let x = 0; x <= W; x += 20) g.lineTo(x, hy + 14 * Math.sin(x * 0.006) + 8 * Math.sin(x * 0.017 + 1));
+  g.lineTo(W, H); g.fill();
+  [[0.18, 26], [0.24, 16], [0.71, 34], [0.79, 20]].forEach(([fx, r]) => {
+    const x = fx * W, y = hy + 14 * Math.sin(x * 0.006) + 8 * Math.sin(x * 0.017 + 1);
+    g.fillStyle = "rgba(240, 180, 90, .10)"; g.strokeStyle = "rgba(240, 180, 90, .3)"; g.lineWidth = 1;
+    g.beginPath(); g.arc(x, y, r, Math.PI, 0); g.fill(); g.stroke();
+  });
+  [0.33, 0.58, 0.9].forEach((fx, i) => {
+    const x = fx * W, y = hy + 14 * Math.sin(x * 0.006) + 8 * Math.sin(x * 0.017 + 1);
+    g.fillStyle = "rgba(30, 12, 8, .9)"; g.fillRect(x - 3, y - 46, 6, 46);
+    for (let k = 0; k < 6; k++) {
+      const ph = ((t / 9000 + k / 6 + i * 0.3) % 1);
+      g.fillStyle = `rgba(200, 170, 150, ${0.10 * (1 - ph)})`;
+      g.beginPath(); g.arc(x + ph * 60, y - 50 - ph * 40, 4 + ph * 16, 0, 7); g.fill();
+    }
+    g.fillStyle = Math.sin(t / 400 + i) > 0.6 ? "rgba(229, 56, 59, .9)" : "rgba(229, 56, 59, .2)"; g.fillRect(x - 1.5, y - 50, 3, 3);
+  });
+  // Dust storm gust: a band of streaks crossing the screen every couple of minutes
+  const gust = (t / 120000) % 1;
+  if (gust < 0.12) {
+    const k = gust / 0.12, a = Math.sin(k * Math.PI) * 0.22;
+    for (let i = 0; i < 90; i++) {
+      const y = (i * 97.13 % 1) * H, x = ((i * 0.618 + k * 2.2) % 1.2 - 0.1) * W;
+      g.strokeStyle = `rgba(210, 120, 70, ${a})`; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 40, y + 3); g.stroke();
+    }
+  }
   // Phobos crossing the sky every few minutes, and an occasional orbiting satellite
   const ph = ((t / 240000) % 1) * 1.4 - 0.2, px = ph * W, py = H * (0.32 - 0.18 * Math.sin(ph * Math.PI));
   const halo = g.createRadialGradient(px, py, 0, px, py, 26); halo.addColorStop(0, "rgba(220, 190, 160, .18)"); halo.addColorStop(1, "rgba(220, 190, 160, 0)");

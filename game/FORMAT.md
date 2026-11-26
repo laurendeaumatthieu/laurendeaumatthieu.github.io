@@ -19,7 +19,8 @@ it; a reconstruction opens with its exact (moment, place, people); a puzzle rewa
   A sheet is confirmed only when all fields are right, three at a time (fewer for the last ones).
 - `moments`: whole timeline in order, `[{ "id": "d1-08", "label": "Jour 1 · 08 h", "locked": true }]`.
 - `places`: map rooms `[{ "id": "dome", "label": "Le dôme", "x": 10, "y": 5, "w": 20, "h": 12, "locked": true }]`
-  on a 100 × 60 grid, not overlapping. Locked rooms are hidden until unlocked.
+  on a 100 × 60 grid, not overlapping. Locked rooms are hidden until unlocked, then shown as a signal the player
+  reaches by a rover trip (game/rover.js), except rooms opened by the first chapter.
 - `start`: node ids available at the beginning (typically the first chapter).
 - `final`: `{ "text": "… {0} … {1} …", "options": [[…], […]], "answer": [i, j], "ending": { "title", "lines": ["…"] } }`.
 

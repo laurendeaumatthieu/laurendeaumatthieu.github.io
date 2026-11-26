@@ -55,7 +55,7 @@ async function open(table, k) { const id = await idOf(k); return table[id] ? dec
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 
 // ---- State ----
-const fresh = () => ({ keys: [], skeys: [], done: [], asked: [], moments: [], places: [], known: [], labels: {}, guess: {}, ok: [], solved: [], notes: "", pins: [], ending: null, finalOpen: false, seenIntro: false });
+const fresh = () => ({ keys: [], skeys: [], done: [], asked: [], moments: [], places: [], known: [], labels: {}, guess: {}, ok: [], solved: [], notes: "", pins: [], ending: null, finalOpen: false, seenIntro: false, reached: [], feed: [] });
 let st = fresh(), N = {}, order = [], R = {};          // decrypted nodes by id (in unlock order), reconstructions by id
 const ui = { section: "journal", moment: null, room: null, pick: new Set(), view: null, flt: { moment: "", place: "", a: "", b: "" } };
 const novel = new Set(), messages = [], hintCache = new Map();
@@ -74,11 +74,14 @@ async function applyUnlock(src, u = {}) {
   st.done.push(src);
   for (const h of u.nodes || []) await addNode(h);
   add(st.places, u.places); add(st.moments, u.moments); add(st.known, u.people);
+  // Places opened by the first chapter are reachable at once; later ones need a rover trip
+  if (src === "n:" + nodes("chapter")[0]?.id) add(st.reached, u.places);
   if (u.final) st.finalOpen = true;
   if (u.message) messages.push([].concat(u.message));
 }
 async function load(data) {
   st = Object.assign(fresh(), data); N = {}; order = []; R = {};
+  if (!data.reached) st.reached = [...st.places];
   for (const h of [...st.keys]) await addNode(h);
   for (const h of st.skeys) { const s = await open(S.scenes, unhex(h)); if (s) R[s.id] = s; }
 }
@@ -88,6 +91,7 @@ async function newGame() { await load(fresh()); for (const h of S.start) await a
 const nodes = type => order.map(id => N[id]).filter(n => n.type === type);
 const moments = () => S.moments.filter(m => !m.locked || st.moments.includes(m.id));
 const places = () => S.places.filter(p => !p.locked || st.places.includes(p.id));
+const reached = id => !S.places.find(p => p.id === id)?.locked || st.reached.includes(id);
 const momentIdx = id => S.moments.findIndex(m => m.id === id);
 const momentLabel = id => S.moments.find(m => m.id === id)?.label ?? id;
 const placeLabel = id => S.places.find(p => p.id === id)?.label ?? id;
@@ -143,7 +147,7 @@ function announce(b) {
   const np = st.known.filter(x => !b.p.has(x)); np.forEach(x => novel.add("p:" + x));
   if (np.length) items.push(`${np.length} dossier${np.length > 1 ? "s" : ""} ouvert${np.length > 1 ? "s" : ""}`);
   if (st.finalOpen && !b.f) items.push("Conclusion disponible");
-  if (items.length) { toast(items); setTimeout(() => sfx("discover"), 250); }
+  if (items.length) { toast(items); setTimeout(() => sfx("discover"), 250); st.feed = [...items, ...st.feed].slice(0, 10); save(); }
 }
 async function discover(fn) {
   const b = snap(); await fn(); save(); announce(b); renderNav(); renderPane();
@@ -172,7 +176,27 @@ const NEWS = {
   enigmes: () => nodes("puzzle").some(n => novel.has("n:" + n.id)),
 };
 const SHOWN = { enigmes: () => nodes("puzzle").length > 0, preuves: () => nodes("evidence").length > 0, conclusion: () => st.finalOpen || !!st.ending };
+// Investigation strip under the header: progress counters (each opens its section) and the latest discoveries
+function renderStrip() {
+  const signals = places().filter(p => !reached(p.id)).length;
+  const stats = [
+    ["dossiers", "Fiches", `${st.ok.length}/${Object.keys(S.people).length}`],
+    ["journal", "Reconstitutions", `${Object.keys(R).length}/${Object.keys(S.scenes).length}`],
+    ["carte", "Lieux", `${places().length - signals}` + (signals ? ` +${signals}◌` : "")],
+    ["carte", "Moments", `${moments().length}`],
+    ["preuves", "Preuves", `${nodes("evidence").length}`],
+    ["enigmes", "Énigmes", `${st.solved.length}/${Object.keys(S.answers).length}`],
+  ];
+  $("stats").replaceChildren(...stats.map(([sec, label, v]) => {
+    const b = el("button", "stat"); b.append(el("span", "k", label), el("span", "v", v));
+    b.onclick = () => go(sec); return b;
+  }));
+  const feed = st.feed.length ? st.feed : ["En attente de premières observations"];
+  const t = $("ticker-text"), text = "▸ " + feed.join("   ▸ ") + "   ";
+  if (t.dataset.v !== text) { t.dataset.v = text; t.textContent = text + text; t.style.animationDuration = `${Math.max(20, text.length / 4)}s`; }
+}
 function renderNav() {
+  renderStrip();
   $("sections").replaceChildren(...SECTIONS.filter(([id]) => !SHOWN[id] || SHOWN[id]()).map(([id, label]) => {
     const b = el("button", ui.section === id ? "on" : "", label);
     if (NEWS[id]?.()) b.append(el("span", "pip"));
@@ -180,7 +204,10 @@ function renderNav() {
     return b;
   }));
 }
-function go(section) { ui.section = section; sfx("tick"); renderNav(); renderPane(); }
+function go(section) {
+  ui.section = section; sfx("tick"); renderNav(); renderPane();
+  const pane = $("pane"); pane.classList.add("wipe"); clearTimeout(go.t); go.t = setTimeout(() => pane.classList.remove("wipe"), 450);
+}
 
 let paneToken = 0;
 async function renderPane() {
@@ -207,7 +234,8 @@ const paras = (list, cls = "prose") => { const d = el("div", cls); (list || []).
 function line(sp, text, i, ref) {
   const p = el("p", sp === 0 ? "line narr" : sp === -1 ? "line me" : "line");
   p.style.animationDelay = `${Math.min(i, 20) * 35}ms`;
-  if (sp > 0) p.append(portrait(sp, "tiny"));
+  // Fixed avatar column so every reply starts at the same x: portrait, the lieutenant's badge, or an empty slot for narration
+  p.append(sp > 0 ? portrait(sp, "tiny") : el("span", sp === -1 ? "badge mono" : "slot", sp === -1 ? "LT" : ""));
   if (sp) p.append(nameEl("span", "who", sp));
   p.append(el("span", "say", text));
   p.title = "Épingler dans le carnet";
@@ -239,6 +267,7 @@ function showScene(id, hit = -1) {
   const lines = el("div", "lines");
   s.lines.forEach(([sp, t], i) => { const l = line(sp, t, i, { v: "scene", id }); if (i === hit) l.classList.add("hit"); lines.append(l); });
   reader("RECONSTITUTION", s.title || "", where, present, lines);
+  const r = $("reader"); r.classList.remove("scene-in"); void r.offsetWidth; r.classList.add("scene-in");
   if (hit >= 0) lines.children[hit]?.scrollIntoView({ block: "center" });
 }
 function openSearch(id) {
@@ -331,6 +360,14 @@ async function renderMap(box) {
   const defs = svgEl("defs"), pat = svgEl("pattern", { id: "grid", width: 5, height: 5, patternUnits: "userSpaceOnUse" });
   pat.append(svgEl("path", { d: "M5 0H0V5", fill: "none", stroke: "rgba(212,162,76,.08)", "stroke-width": .2 })); defs.append(pat); svg.prepend(defs);
   for (const p of places()) {
+    if (!reached(p.id)) {
+      const g = svgEl("g", { class: "room signal" + (ui.room === p.id ? " on" : "") });
+      g.append(svgEl("rect", { x: p.x, y: p.y, width: p.w, height: p.h, rx: 1.2 }));
+      const t = svgEl("text", { x: p.x + 1.2, y: p.y + 3 }); t.textContent = "◌ " + p.label; g.append(t);
+      const b = svgEl("text", { x: p.x + p.w - 1.2, y: p.y + p.h - 1.4, "text-anchor": "end", class: "badge" }); b.textContent = "⇢ rover"; g.append(b);
+      g.onclick = () => { ui.room = p.id; novel.delete("l:" + p.id); sfx("tick"); renderNav(); renderPane(); };
+      svg.append(g); continue;
+    }
     const n = await hint(ui.moment, p.id), done = sceneAt(ui.moment, p.id), search = nodes("search").find(x => x.place === p.id);
     const g = svgEl("g", { class: "room" + (ui.room === p.id ? " on" : "") + (novel.has("l:" + p.id) ? " new" : "") + (n && !done ? " live" : "") + (done ? " done" : "") });
     g.append(svgEl("rect", { x: p.x, y: p.y, width: p.w, height: p.h, rx: 1.2 }));
@@ -341,13 +378,20 @@ async function renderMap(box) {
     g.onclick = () => { ui.room = p.id; novel.delete("l:" + p.id); ui.pick.clear(); sfx("tick"); renderNav(); renderPane(); };
     svg.append(g);
   }
-  box.append(tl, svg, el("p", "muted legend", "◉ silhouette captée · ✓ reconstituée · ⌕ à fouiller"));
+  const wrap = el("div", "mapwrap"); wrap.append(svg);
+  box.append(tl, wrap, el("p", "muted legend", "◉ silhouette captée · ✓ reconstituée · ⌕ à fouiller · ◌ signal à rejoindre en rover"));
   if (ui.room && places().some(p => p.id === ui.room)) box.append(await roomPanel(ui.room));
   else box.append(el("p", "muted", "Touchez une pièce pour la fouiller ou reconstituer ce qui s'y est passé."));
 }
 async function roomPanel(pid) {
   const panel = el("div", "room-panel"), n = await hint(ui.moment, pid), done = sceneAt(ui.moment, pid);
   panel.append(el("h3", "", placeLabel(pid)));
+  if (!reached(pid)) {
+    const b = el("button", "btn", "⇢ Partir en rover");
+    b.onclick = () => expedition(pid);
+    panel.append(el("p", "", "Signal capté, mais personne de la police n'y est encore allé. Prenez un rover à la base et rejoignez la balise avant que la batterie ne lâche."), b);
+    return panel;
+  }
   const search = nodes("search").find(x => x.place === pid);
   if (search) { const b = el("button", "btn ghost", "⌕ Fouiller la pièce"); b.onclick = () => openSearch(search.id); panel.append(b); }
   if (done) { const b = el("button", "btn", "Revoir la reconstitution"); b.onclick = () => showScene(done.id); panel.append(el("p", "mono gold", `${momentLabel(ui.moment)} · reconstituée`), b); return panel; }
@@ -369,6 +413,9 @@ async function roomPanel(pid) {
     if (!s) { sfx("fail"); msg.textContent = ui.pick.size === n ? "Les signatures ne correspondent pas : quelqu'un n'est pas le bon." : `Il faut exactement ${n} personne${n > 1 ? "s" : ""}.`; msg.className = "msg warn"; return; }
     const r = rebuild.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, 60); sfx("light");
     ui.pick.clear();
+    // Sensor sync overlay before the scene appears
+    const sync = el("div", "sync"), bar = el("div", "", "SYNCHRONISATION DES CAPTEURS"); bar.append(el("i")); sync.append(bar);
+    document.body.append(sync); await new Promise(r => setTimeout(r, 850)); sync.remove();
     await discover(async () => { st.skeys.push(hex(k)); R[s.id] = s; add(st.known, s.people); await applyUnlock("r:" + s.id, s.unlock); });
     showScene(s.id);
   };
@@ -457,6 +504,22 @@ async function solve(z, answer) {
   sfx("solve"); burst(innerWidth / 2, innerHeight / 2, 80);
   await discover(async () => { st.solved.push({ id: z.id, text: r.text }); await applyUnlock("z:" + z.id, r.unlock); });
   return true;
+}
+// Rover trip to a newly detected place (game/rover.js); difficulty grows with each place reached
+let stopRover = null;
+function expedition(pid) {
+  const d = $("minigame");
+  $("mg-title").textContent = "Expédition · " + placeLabel(pid); $("mg-status").textContent = "";
+  stopRover = rover($("mg-board"), { seed: pid, level: st.reached.length, label: placeLabel(pid) }, {
+    status: t => { $("mg-status").textContent = t; },
+    win: async () => {
+      d.close(); const r = $("pane").getBoundingClientRect(); burst(r.left + r.width / 2, r.top + 120, 70);
+      const msg = `Rover arrivé · ${placeLabel(pid)}`;
+      await discover(() => { add(st.reached, [pid]); st.feed = [msg, ...st.feed].slice(0, 10); }); toast([msg]);
+    },
+  });
+  d.addEventListener("close", () => { stopRover?.(); stopRover = null; }, { once: true });
+  d.showModal();
 }
 function playGame(z) {
   const g = PUZZLES.find(p => p.id === z.game), d = $("minigame");
@@ -549,6 +612,13 @@ function telemetry() {
   $("telemetry").textContent = `MSD ${Math.floor(msd)} · ${pad(h)}:${pad((h % 1) * 60)} MTC · O₂ ${jit(20.9, .2)} % · ${jit(101.3, .4)} kPa · ext. ${jit(-63, 4)} °C`;
 }
 telemetry(); setInterval(telemetry, 3000);
+
+// Burger menu with the secondary tools
+$("menu-btn").onclick = e => {
+  e.stopPropagation(); const m = $("menu"); m.hidden = !m.hidden;
+  $("menu-btn").setAttribute("aria-expanded", String(!m.hidden)); $("menu-btn").classList.toggle("open", !m.hidden); sfx("tick");
+};
+document.addEventListener("click", e => { if (!$("menu").hidden && !e.target.closest(".menu")) { $("menu").hidden = true; $("menu-btn").classList.remove("open"); $("menu-btn").setAttribute("aria-expanded", "false"); } });
 
 (async () => {
   document.title = S.title; $("title").textContent = S.title;
