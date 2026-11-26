@@ -4,7 +4,7 @@
 const S = window.STORY;
 const $ = id => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
-const SAVE = "enquete-save-v4";
+const SAVE = "enquete-save-v5";
 
 // ---- Crypto (must match tools/build_story.py) ----
 // Pure JS SHA-256: WebCrypto is missing on plain-HTTP pages

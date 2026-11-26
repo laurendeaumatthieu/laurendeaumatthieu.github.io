@@ -3,7 +3,8 @@
 
 Usage: python3 tools/build_story.py <story_dir> <out.js>
 
-Nodes are encrypted with random keys handed over by whatever unlocks them; reconstructions with
+Nodes are encrypted with keys derived from a secret salt (<story_dir>/.build_salt, stable across rebuilds so saves survive)
+and handed over by whatever unlocks them; reconstructions with
 their exact (moment, place, people); puzzle rewards with their answer; the ending with its choices.
 The published file reveals nothing without playing.
 """
@@ -131,8 +132,13 @@ def main(story_dir: str, out: str):
     assert not (lost_nodes or lost_search or lost_topics or lost_scenes), \
         f"unreachable: nodes {lost_nodes} searches {lost_search} topics {lost_topics} reconstructions {lost_scenes}"
 
-    # Encryption
-    nkeys = {nid: os.urandom(32) for nid in nodes}
+    # Encryption. Node keys derive from a secret salt kept in the private story repo, so a rebuild
+    # (text fixes) keeps the same keys and players' saves stay valid
+    salt_file = root / ".build_salt"
+    if not salt_file.exists():
+        salt_file.write_text(os.urandom(32).hex())
+    salt = bytes.fromhex(salt_file.read_text().strip())
+    nkeys = {nid: sha(salt + b"node|" + nid.encode()) for nid in nodes}
 
     def public_unlock(u):
         u = dict(u or {})
